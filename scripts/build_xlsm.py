@@ -14,6 +14,7 @@ Output:
 from __future__ import annotations
 
 import os
+import struct
 import sys
 from pathlib import Path
 
@@ -190,6 +191,36 @@ def _write_rows(ws, rows):
                 ws.cell(row=r, column=c, value=val)
 
 
+def _force_codepage_949(proj) -> None:
+    """Patch the parsed VBA project so it serializes with PROJECTCODEPAGE=949.
+
+    pyOpenVBA's serialize_dir_stream reuses the PROJECTINFORMATION prefix from
+    proj.dir_raw verbatim (which carries PROJECTCODEPAGE=1252 from the create_new
+    template), and rebuild_module_stream MBCS-encodes each module with
+    proj.code_page. Setting proj.code_page alone is ignored because the dir prefix
+    is spliced unchanged. So we patch the 0x0003 (PROJECTCODEPAGE) record inside
+    dir_raw to 949 AND set proj.code_page=949, then mark dir + modules dirty so the
+    streams are actually re-encoded. cp949 covers 한글, so the source survives."""
+    raw = bytearray(proj.dir_raw)
+    i = 0
+    patched = False
+    while i + 6 <= len(raw):
+        rid = struct.unpack_from("<H", raw, i)[0]
+        size = struct.unpack_from("<I", raw, i + 2)[0]
+        if rid == 0x0003 and size == 2:  # PROJECTCODEPAGE
+            struct.pack_into("<H", raw, i + 6, 949)
+            patched = True
+            break
+        i += 6 + size
+    if not patched:
+        raise RuntimeError("PROJECTCODEPAGE record not found in dir stream")
+    proj.dir_raw = bytes(raw)
+    proj.code_page = 949
+    proj.dir_structure_dirty = True
+    for m in proj.modules:
+        m.dirty = True
+
+
 def main() -> int:
     for name, path in MODULES:
         if not path.exists():
@@ -209,6 +240,13 @@ def main() -> int:
     # remove the default empty Module1 created by create_new
     if "Module1" in proj.module_names():
         proj.delete_module("Module1")
+    # CRITICAL: force the VBA project code page to 949 (Korean) so 한글 in the
+    # module source—including FUNCTIONAL literals like headerMap("\ucd9c\ubc1c\uc9c0ip")—
+    # survives. pyOpenVBA's create_new template hardcodes PROJECTCODEPAGE=1252 in
+    # dir_raw, and serialize_dir_stream reuses that prefix verbatim; modules are
+    # then MBCS-encoded with project.code_page. Left at 1252, every 한글 becomes '?'
+    # and the parser cannot match Korean headers at runtime in Excel.
+    _force_codepage_949(proj)
     xf.save()
     xf.close()
 

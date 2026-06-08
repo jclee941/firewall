@@ -336,3 +336,18 @@ def test_injected_vba_modules_match_source_files(xlsm_path):
                 f"injected {name} does not match vba/{name}.bas (build corruption?)"
     finally:
         g.close()
+
+
+def test_korean_preserved_in_injected_vba(xlsm_path):
+    """한글 functional 리터럴이 빌드된 .xlsm VBA에 보존돼야 한다 (code_page=949)."""
+    from pyopenvba import excel as ex
+    g = ex.ExcelFile(xlsm_path)
+    try:
+        assert g.vba_project().code_page == 949, "VBA project must use code page 949"
+        src = g.get_module("FirewallPolicyAutomation")
+        assert 'headerMap("출발지ip")' in src, "Korean column literal corrupted"
+        assert 'headerMap("목적지ip")' in src
+        assert "출발지IP" in src and "목적지IP" in src
+        assert "?" * 3 not in src, "Korean text was replaced with '?'"
+    finally:
+        g.close()
