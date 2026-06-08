@@ -26,6 +26,18 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 
 ## 빠른 시작
 
+바로 시작할 수 있는 영어 파일명 번들은 `dist/firewall-policy-automation-starter.zip`에 있습니다.
+
+포함 파일:
+
+| 파일 | 역할 |
+|---|---|
+| `firewall-policy-automation-starter.xlsx` | `requests`, `firewalls`, `settings`가 미리 구성된 시작 파일 |
+| `FirewallPolicyAutomation.bas` | Excel에 가져올 VBA 매크로 모듈 |
+| `README.txt` | 번들 사용 순서 |
+
+주의: 실제 매크로 포함 `.xlsm`은 Excel에서 `Save As .xlsm` 후 `.bas`를 가져와야 합니다. 이 저장소는 Linux 환경에서 생성되므로 Excel의 `vbaProject.bin`을 직접 만들 수 없습니다.
+
 1. Excel에서 새 통합 문서를 만들고 `.xlsm`으로 저장합니다.
 2. `Alt + F11`로 VBA 편집기를 엽니다.
 3. `File > Import File...`에서 `vba/FirewallPolicyAutomation.bas`를 가져옵니다.
