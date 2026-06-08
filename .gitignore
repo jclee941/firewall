@@ -1,0 +1,4 @@
+~$*.xls*
+incoming-requests/
+merged-requests.*
+*.tmp
