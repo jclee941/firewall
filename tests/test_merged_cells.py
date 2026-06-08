@@ -141,3 +141,38 @@ def test_horizontal_merge_in_header(tmp_path, engine):
     assert parsed[0]["note"] == "메모"
     r = engine.analyze(parsed[0]["source_ip"], parsed[0]["dest_ip"], parsed[0]["direction"])
     assert r.status == "OK"
+
+
+# --------------------------------------------------------------------------- #
+# S4: 양쪽 IP 세로병합 + 아래 행은 포트만 다름 (Oracle이 지적한 last-row 누락 케이스)
+# 한 신청이 동일 출발/목적 IP로 여러 포트를 신청하는 양식.
+# --------------------------------------------------------------------------- #
+
+def test_both_ip_vertical_merge_lower_row_kept(tmp_path, engine):
+    def build(ws):
+        hdr = ["No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜",
+               "포트", "방향", "용도", "시작일", "종료일", "비고"]
+        for i, h in enumerate(hdr, 1):
+            ws.cell(1, i, h)
+        # 출발지IP(B), 출발지(C), 목적지IP(D), 목적지(E) 모두 B2:E3 구간으로 세로병합,
+        # 아래 행은 포트/용도만 다름.
+        ws.cell(2, 2, "10.10.10.5"); ws.merge_cells("B2:B3")
+        ws.cell(2, 3, "PC"); ws.merge_cells("C2:C3")
+        ws.cell(2, 4, "10.20.20.5"); ws.merge_cells("D2:D3")
+        ws.cell(2, 5, "DMZ"); ws.merge_cells("E2:E3")
+        # row2: 포트 443 / row3: 포트 8443 (IP 컴럼은 row3에 원래 빈값)
+        ws.cell(2, 1, 1); ws.cell(2, 6, "TCP"); ws.cell(2, 7, "443"); ws.cell(2, 8, "OUT"); ws.cell(2, 9, "웹")
+        ws.cell(3, 1, 2); ws.cell(3, 6, "TCP"); ws.cell(3, 7, "8443"); ws.cell(3, 8, "OUT"); ws.cell(3, 9, "관리")
+
+    p = _build(tmp_path, "bothmerge.xlsx", build)
+    parsed = parse_request_sheet(_rows_from(p))
+    # 두 행 모두 살아있어야 함 (last-row 누락 없음)
+    assert len(parsed) == 2
+    assert parsed[0]["source_ip"] == "10.10.10.5" and parsed[0]["dest_ip"] == "10.20.20.5"
+    assert parsed[1]["source_ip"] == "10.10.10.5" and parsed[1]["dest_ip"] == "10.20.20.5"
+    assert parsed[0]["port"] == "443" and parsed[1]["port"] == "8443"
+    # 둘 다 동일 경로 (internal -> transit -> dmz)
+    for r in parsed:
+        res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+        assert res.status == "OK"
+        assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"

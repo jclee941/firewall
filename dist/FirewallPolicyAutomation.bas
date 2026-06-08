@@ -644,13 +644,22 @@ Private Function OutputRowMessage(ByVal firstOutputRow As Long, ByVal nextRow As
 End Function
 
 Private Function SourceLastRow(ByVal sourceSheet As Worksheet, ByVal headerMap As Object) As Long
-    Dim lastSourceRow As Long
-    Dim lastDestinationRow As Long
+    ' Merge-aware last-row detection. Raw End(xlUp) on the IP columns can stop
+    ' short when 출발지IP/목적지IP are vertically merged (Excel stores the value
+    ' only in the merge top-left). So we start from the sheet's real used range
+    ' and walk back to the last row that ReadDataCell sees as having IP data.
+    Dim usedLast As Long
+    Dim r As Long
 
-    lastSourceRow = sourceSheet.Cells(sourceSheet.Rows.Count, headerMap("출발지ip")).End(xlUp).Row
-    lastDestinationRow = sourceSheet.Cells(sourceSheet.Rows.Count, headerMap("목적지ip")).End(xlUp).Row
-    If lastDestinationRow > lastSourceRow Then lastSourceRow = lastDestinationRow
-    SourceLastRow = lastSourceRow
+    usedLast = sourceSheet.UsedRange.Row + sourceSheet.UsedRange.Rows.Count - 1
+    For r = usedLast To 1 Step -1
+        If Len(Trim$(CStr(ReadDataCell(sourceSheet, r, headerMap("출발지ip"))))) > 0 _
+           Or Len(Trim$(CStr(ReadDataCell(sourceSheet, r, headerMap("목적지ip"))))) > 0 Then
+            SourceLastRow = r
+            Exit Function
+        End If
+    Next r
+    SourceLastRow = 1
 End Function
 
 Private Function RequestSourceRowHasData(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object) As Boolean
