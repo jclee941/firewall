@@ -1,0 +1,114 @@
+name: release
+
+# Tag-driven release automation:
+#   git tag v1.2.3 && git push origin v1.2.3
+# builds the macro-enabled .xlsm on a clean Ubuntu runner, runs the full
+# test suite, then publishes a GitHub Release with the .xlsm attached.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        run: python -m pytest tests/ -q
+
+      - name: Build macro-enabled .xlsm
+        run: python scripts/build_xlsm.py
+
+      - name: Verify artifact (vbaProject + modules + sheets)
+        run: |
+          python - <<'PY'
+          import zipfile, openpyxl
+          from pyopenvba import excel as ex
+          p = "dist/firewall-policy-automation.xlsm"
+          z = zipfile.ZipFile(p)
+          assert z.testzip() is None, "zip corrupt"
+          assert any("vbaProject.bin" in n for n in z.namelist()), "no vbaProject.bin"
+          g = ex.ExcelFile(p)
+          mods = g.module_names()
+          assert "FirewallPolicyAutomation" in mods and "FirewallRouteAnalysis" in mods, mods
+          assert "Module1" not in mods, "Module1 not removed"
+          g.close()
+          wb = openpyxl.load_workbook(p, keep_vba=True)
+          need = {"requests", "firewalls", "network_definitions", "routing_paths",
+                  "settings", "processing_log", "sample-request-format", "usage"}
+          assert need.issubset(set(wb.sheetnames)), wb.sheetnames
+          assert wb["requests"].max_column == 24, wb["requests"].max_column
+          print("artifact OK:", p)
+          PY
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          NOTES_FILE="$(mktemp)"
+          cat > "$NOTES_FILE" <<'EOF'
+          신청서 엑셀을 받아 **출발지→목적지 트래픽이 통과하는 방화벽 경로(적용대상방화벽)** 를 자동 산정하는 Excel 네이티브(VBA) 도구입니다.
+
+          ## 다운로드 / 설치
+          아래 **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
+
+          ## 사용 순서
+          1. `network_definitions` : IP 대역 → zone (대역정의)
+          2. `firewalls` : 방화벽 장비 목록
+          3. `routing_paths` : zone 간 라우팅 경로
+          4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_targets), 헤더 별칭(header_alias)
+          5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8)
+          6. 경로만 재분석: `AnalyzeRequestRoutes`
+
+          ## 주요 기능
+          - IP / CIDR 대역 / 다중주소 리스트 → zone 해석 (longest-prefix)
+          - 존 그래프 BFS 최단경로로 통과 방화벽 산정 (여러 방화벽 정상)
+          - 세로 병합 셀 신청서 처리 (행 누락 없음)
+          - 하위폴더 재귀 + 폴더명 파싱 (정보보호센터_1234 → 팀/문서번호)
+          - 사용자 정의 헤더 별칭 (settings header_alias)
+          - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
+
+          이 릴리즈의 .xlsm은 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
+          EOF
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/firewall-policy-automation.xlsm \
+              --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "$TAG" dist/firewall-policy-automation.xlsm \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "$TAG — Firewall Route Analysis (적용대상방화벽 경로 분석)" \
+              --notes-file "$NOTES_FILE"
+          fi

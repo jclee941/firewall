@@ -1,0 +1,5 @@
+# Build/test dependencies for scripts/build_xlsm.py and tests/.
+# Pinned to the versions verified to produce a valid macro-enabled .xlsm.
+pyOpenVBA==2.0.0
+openpyxl==3.1.5
+pytest==9.0.3
