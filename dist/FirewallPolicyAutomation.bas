@@ -3,6 +3,9 @@ Option Explicit
 Private Const SETTINGS_SHEET As String = "settings"
 Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const REQUESTS_SHEET As String = "requests"
+Private Const LOG_SHEET As String = "processing_log"
+Private Const NETWORK_SHEET As String = "network_definitions"
+Private Const ROUTING_SHEET As String = "routing_paths"
 
 Private Const COL_SOURCE_FILE As Long = 1
 Private Const COL_SOURCE_ROW As Long = 2
@@ -18,21 +21,40 @@ Private Const COL_PURPOSE As Long = 11
 Private Const COL_START_DATE As Long = 12
 Private Const COL_END_DATE As Long = 13
 Private Const COL_NOTE As Long = 14
+Private Const COL_VALIDATION_STATUS As Long = 15
+Private Const COL_VALIDATION_MESSAGE As Long = 16
+Private Const COL_MATCH_DETAILS As Long = 17
+Private Const COL_FIREWALL_PATH As Long = 18
+Private Const COL_SOURCE_ZONE As Long = 19
+Private Const COL_DESTINATION_ZONE As Long = 20
+Private Const COL_ZONE_PATH As Long = 21
 
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
     Dim firewallsSheet As Worksheet
     Dim settingsSheet As Worksheet
+    Dim logSheet As Worksheet
+    Dim networkSheet As Worksheet
+    Dim routingSheet As Worksheet
 
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
+    Set logSheet = EnsureSheet(LOG_SHEET)
+    Set networkSheet = EnsureSheet(NETWORK_SHEET)
+    Set routingSheet = EnsureSheet(ROUTING_SHEET)
 
     WriteRequestHeaders requestsSheet
     WriteFirewallHeaders firewallsSheet
     WriteSettings settingsSheet
+    WriteLogHeaders logSheet
+    WriteNetworkHeaders networkSheet
+    WriteRoutingHeaders routingSheet
     FormatRequestsSheet requestsSheet
     FormatFirewallsSheet firewallsSheet
+    FormatLogSheet logSheet
+    FormatGenericSheet networkSheet, "A:E"
+    FormatGenericSheet routingSheet, "A:G"
 
     MsgBox "방화벽 정책 자동화 시트 구성이 완료되었습니다.", vbInformation
 End Sub
@@ -42,23 +64,38 @@ Public Sub MergeFirewallRequestFolder()
     Dim requestsSheet As Worksheet
     Dim firewallsSheet As Worksheet
     Dim settingsSheet As Worksheet
+    Dim logSheet As Worksheet
     Dim nextRow As Long
     Dim mergedCount As Long
 
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
+    Set logSheet = EnsureSheet(LOG_SHEET)
     WriteRequestHeaders requestsSheet
     WriteSettings settingsSheet
+    WriteLogHeaders logSheet
     folderPath = RequestFolderPath(settingsSheet)
     If Len(folderPath) = 0 Then Exit Sub
 
     requestsSheet.Rows("2:" & requestsSheet.Rows.Count).ClearContents
+    logSheet.Rows("2:" & logSheet.Rows.Count).ClearContents
     nextRow = 2
-    mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, nextRow)
+    mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, logSheet, nextRow)
     MarkDuplicateRequests requestsSheet
     MarkUnmatchedFirewalls requestsSheet
     FormatRequestsSheet requestsSheet
+    FormatLogSheet logSheet
+
+    On Error GoTo RouteFailed
+    Application.Run "FirewallRouteAnalysis.AnalyzeRequestRoutes"
+    On Error GoTo 0
+    GoTo RouteDone
+RouteFailed:
+    AppendProcessingLog logSheet, "(route analysis)", "ERROR", 0, "라우트 분석 실패: " & Err.Description
+    MsgBox "라우트 분석 중 오류가 발생했습니다: " & Err.Description, vbExclamation
+    On Error GoTo 0
+RouteDone:
 
     MsgBox CStr(mergedCount) & "건의 신청서를 통합했습니다.", vbInformation
 End Sub
@@ -100,14 +137,16 @@ Public Sub CreateSampleRequestWorkbook()
     MsgBox "샘플 신청서를 생성했습니다: " & CStr(outputPath), vbInformation
 End Sub
 
-Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
     Dim fileName As String
     Dim mergedCount As Long
 
     fileName = Dir(folderPath & Application.PathSeparator & "*.xls*")
     Do While Len(fileName) > 0
         If Left$(fileName, 2) <> "~$" Then
-            mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, requestsSheet, firewallsSheet, nextRow)
+            If StrComp(folderPath & Application.PathSeparator & fileName, ThisWorkbook.FullName, vbTextCompare) <> 0 Then
+                mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, requestsSheet, firewallsSheet, logSheet, nextRow)
+            End If
         End If
         fileName = Dir()
     Loop
@@ -115,7 +154,7 @@ Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsShee
     MergeFolderFiles = mergedCount
 End Function
 
-Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
     Dim sourceBook As Workbook
     Dim sourceSheet As Worksheet
     Dim headerMap As Object
@@ -123,6 +162,9 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
     Dim lastRow As Long
     Dim rowIndex As Long
     Dim mergedCount As Long
+    Dim firstOutputRow As Long
+
+    firstOutputRow = nextRow
 
     On Error GoTo OpenFailed
     Set sourceBook = Workbooks.Open(filePath, ReadOnly:=True, UpdateLinks:=False)
@@ -131,9 +173,9 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
     Set headerMap = BuildHeaderMap(sourceSheet, headerRow)
     ValidateRequiredHeaders headerMap, sourceFileName
 
-    lastRow = sourceSheet.Cells(sourceSheet.Rows.Count, headerMap("출발지ip")).End(xlUp).Row
+    lastRow = SourceLastRow(sourceSheet, headerMap)
     For rowIndex = headerRow + 1 To lastRow
-        If Len(Trim$(CStr(sourceSheet.Cells(rowIndex, headerMap("출발지ip")).Value))) > 0 Then
+        If RequestSourceRowHasData(sourceSheet, rowIndex, headerMap) Then
             CopyRequestRow sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName
             nextRow = nextRow + 1
             mergedCount = mergedCount + 1
@@ -141,12 +183,14 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
     Next rowIndex
 
     sourceBook.Close SaveChanges:=False
+    AppendProcessingLog logSheet, sourceFileName, "OK", mergedCount, "헤더 " & CStr(headerRow) & "행, " & OutputRowMessage(firstOutputRow, nextRow)
     MergeWorkbookFile = mergedCount
     Exit Function
 
 OpenFailed:
     If Not sourceBook Is Nothing Then sourceBook.Close SaveChanges:=False
-    MsgBox "파일을 열 수 없습니다: " & filePath & vbCrLf & Err.Description, vbExclamation
+    AppendProcessingLog logSheet, sourceFileName, "ERROR", 0, Err.Description
+    MsgBox "파일을 처리할 수 없습니다: " & filePath & vbCrLf & Err.Description, vbExclamation
     MergeWorkbookFile = 0
 End Function
 
@@ -165,6 +209,7 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     requestsSheet.Cells(targetRow, COL_END_DATE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("종료일")).Value))
     requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("비고")).Value))
     requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls(firewallsSheet, requestsSheet, targetRow)
+    WriteRowValidation requestsSheet, targetRow
 End Sub
 
 Private Function ResolveTargetFirewalls(ByVal firewallsSheet As Worksheet, ByVal requestsSheet As Worksheet, ByVal requestRow As Long) As String
@@ -173,21 +218,46 @@ Private Function ResolveTargetFirewalls(ByVal firewallsSheet As Worksheet, ByVal
     Dim firewallName As String
     Dim cidrText As String
     Dim matched As Object
+    Dim matchDetails As Object
+    Dim detailText As String
 
     Set matched = CreateObject("Scripting.Dictionary")
+    Set matchDetails = CreateObject("Scripting.Dictionary")
     lastRow = firewallsSheet.Cells(firewallsSheet.Rows.Count, 1).End(xlUp).Row
 
     For rowIndex = 2 To lastRow
         firewallName = Trim$(CStr(firewallsSheet.Cells(rowIndex, 1).Value))
         cidrText = Trim$(CStr(firewallsSheet.Cells(rowIndex, 2).Value))
         If Len(firewallName) > 0 And Len(cidrText) > 0 Then
-            If RequestRowMatchesCidr(requestsSheet, requestRow, cidrText) Then
+            detailText = RequestRowMatchDetails(requestsSheet, requestRow, cidrText)
+            If Len(detailText) > 0 Then
                 If Not matched.Exists(firewallName) Then matched.Add firewallName, firewallName
+                If Not matchDetails.Exists(firewallName) Then matchDetails.Add firewallName, firewallName & "=" & detailText
             End If
         End If
     Next rowIndex
 
     ResolveTargetFirewalls = JoinDictionaryKeys(matched)
+    requestsSheet.Cells(requestRow, COL_MATCH_DETAILS).Value = JoinDictionaryValues(matchDetails)
+End Function
+
+Private Function RequestRowMatchDetails(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal cidrText As String) As String
+    Dim parseColumns As Variant
+    Dim index As Long
+    Dim columnNumber As Long
+    Dim detailText As String
+    Dim resultText As String
+
+    parseColumns = RegisteredParseTargetColumns()
+    For index = LBound(parseColumns) To UBound(parseColumns)
+        columnNumber = CLng(parseColumns(index))
+        detailText = AddressListMatchDetails(Trim$(CStr(requestsSheet.Cells(requestRow, columnNumber).Value)), cidrText)
+        If Len(detailText) > 0 Then
+            If Len(resultText) > 0 Then resultText = resultText & "; "
+            resultText = resultText & requestsSheet.Cells(1, columnNumber).Value & ":" & detailText
+        End If
+    Next index
+    RequestRowMatchDetails = resultText
 End Function
 
 Private Function RequestRowMatchesCidr(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal cidrText As String) As Boolean
@@ -263,14 +333,39 @@ Private Function AddressListMatchesCidr(ByVal addressList As String, ByVal cidrL
     Next addressIndex
 End Function
 
+Private Function AddressListMatchDetails(ByVal addressList As String, ByVal cidrList As String) As String
+    Dim addresses() As String
+    Dim cidrs() As String
+    Dim addressIndex As Long
+    Dim cidrIndex As Long
+    Dim addressText As String
+    Dim cidrText As String
+
+    addresses = SplitAddressList(addressList)
+    cidrs = SplitAddressList(cidrList)
+    For addressIndex = LBound(addresses) To UBound(addresses)
+        addressText = Trim$(addresses(addressIndex))
+        For cidrIndex = LBound(cidrs) To UBound(cidrs)
+            cidrText = Trim$(cidrs(cidrIndex))
+            If NetworkRangesOverlap(addressText, cidrText) Then
+                AddressListMatchDetails = addressText & "<>" & cidrText
+                Exit Function
+            End If
+        Next cidrIndex
+    Next addressIndex
+End Function
+
 Private Function SplitAddressList(ByVal addressList As String) As String()
     Dim normalized As String
 
-    normalized = Replace(addressList, vbCrLf, ";")
+    normalized = Replace(addressList, ChrW(160), " ")
+    normalized = Replace(normalized, vbTab, " ")
+    normalized = Replace(normalized, vbCrLf, ";")
     normalized = Replace(normalized, vbCr, ";")
     normalized = Replace(normalized, vbLf, ";")
     normalized = Replace(normalized, ",", ";")
     normalized = Replace(normalized, "，", ";")
+    normalized = Replace(normalized, "；", ";")
     SplitAddressList = Split(normalized, ";")
 End Function
 
@@ -307,7 +402,7 @@ Private Function CidrEnd(ByVal cidrText As String) As Double
 End Function
 
 Private Function CidrBaseIp(ByVal cidrText As String) As String
-    CidrBaseIp = Split(cidrText, "/")(0)
+    CidrBaseIp = Trim$(Split(cidrText, "/")(0))
 End Function
 
 Private Function CidrPrefixLength(ByVal cidrText As String) As Long
@@ -317,7 +412,7 @@ Private Function CidrPrefixLength(ByVal cidrText As String) As Long
     If UBound(cidrParts) = 0 Then
         CidrPrefixLength = 32
     Else
-        CidrPrefixLength = CLng(cidrParts(1))
+        CidrPrefixLength = CLng(Trim$(cidrParts(1)))
     End If
     If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise vbObjectError + 1004, , "Invalid CIDR prefix: " & cidrText
 End Function
@@ -329,9 +424,17 @@ End Function
 Private Function IpToNumber(ByVal ipText As String) As Double
     Dim parts() As String
 
-    parts = Split(ipText, ".")
+    Dim index As Long
+    Dim octet As Long
+
+    parts = Split(Trim$(ipText), ".")
     If UBound(parts) <> 3 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
-    IpToNumber = CDbl(parts(0)) * 16777216# + CDbl(parts(1)) * 65536# + CDbl(parts(2)) * 256# + CDbl(parts(3))
+    For index = 0 To 3
+        If Len(Trim$(parts(index))) = 0 Or Not IsNumeric(Trim$(parts(index))) Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
+        octet = CLng(Trim$(parts(index)))
+        If octet < 0 Or octet > 255 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
+    Next index
+    IpToNumber = CDbl(Trim$(parts(0))) * 16777216# + CDbl(Trim$(parts(1))) * 65536# + CDbl(Trim$(parts(2))) * 256# + CDbl(Trim$(parts(3)))
 End Function
 
 Private Function FindHeaderRow(ByVal worksheet As Worksheet) As Long
@@ -397,6 +500,107 @@ Private Sub ValidateRequiredHeaders(ByVal headerMap As Object, ByVal sourceFileN
     Next header
 End Sub
 
+
+
+Private Function OutputRowMessage(ByVal firstOutputRow As Long, ByVal nextRow As Long) As String
+    If nextRow <= firstOutputRow Then
+        OutputRowMessage = "결과 행 없음"
+    Else
+        OutputRowMessage = "결과 " & CStr(firstOutputRow) & "-" & CStr(nextRow - 1) & "행"
+    End If
+End Function
+
+Private Function SourceLastRow(ByVal sourceSheet As Worksheet, ByVal headerMap As Object) As Long
+    Dim lastSourceRow As Long
+    Dim lastDestinationRow As Long
+
+    lastSourceRow = sourceSheet.Cells(sourceSheet.Rows.Count, headerMap("출발지ip")).End(xlUp).Row
+    lastDestinationRow = sourceSheet.Cells(sourceSheet.Rows.Count, headerMap("목적지ip")).End(xlUp).Row
+    If lastDestinationRow > lastSourceRow Then lastSourceRow = lastDestinationRow
+    SourceLastRow = lastSourceRow
+End Function
+
+Private Function RequestSourceRowHasData(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object) As Boolean
+    RequestSourceRowHasData = Len(Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("출발지ip")).Value))) > 0 Or _
+        Len(Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("목적지ip")).Value))) > 0
+End Function
+
+Private Sub WriteRowValidation(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
+    Dim messageText As String
+
+    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_SOURCE_IP).Value))) = 0 Then messageText = AppendMessageText(messageText, "출발지IP 비어 있음")
+    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_DESTINATION_IP).Value))) = 0 Then messageText = AppendMessageText(messageText, "목적지IP 비어 있음")
+    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_PROTOCOL).Value))) = 0 Then messageText = AppendMessageText(messageText, "프로토콜 비어 있음")
+    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_PORT).Value))) = 0 Then messageText = AppendMessageText(messageText, "포트 비어 있음")
+
+    If Len(messageText) > 0 Then
+        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = "WARN"
+        worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value = messageText
+        worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Interior.Color = RGB(255, 235, 156)
+    Else
+        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = "OK"
+    End If
+End Sub
+
+Private Sub AppendValidationMessage(ByVal worksheet As Worksheet, ByVal rowIndex As Long, ByVal statusText As String, ByVal messageText As String)
+    Dim currentStatus As String
+    Dim currentMessage As String
+
+    currentStatus = Trim$(CStr(worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value))
+    currentMessage = Trim$(CStr(worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value))
+
+    If currentStatus = "OK" Or Len(currentStatus) = 0 Then
+        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = statusText
+    ElseIf InStr(1, currentStatus, statusText, vbTextCompare) = 0 Then
+        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = currentStatus & ";" & statusText
+    End If
+    worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value = AppendMessageText(currentMessage, messageText)
+End Sub
+
+Private Function AppendMessageText(ByVal currentText As String, ByVal newText As String) As String
+    If Len(currentText) = 0 Then
+        AppendMessageText = newText
+    ElseIf Len(newText) = 0 Then
+        AppendMessageText = currentText
+    ElseIf InStr(1, currentText, newText, vbTextCompare) > 0 Then
+        AppendMessageText = currentText
+    Else
+        AppendMessageText = currentText & "; " & newText
+    End If
+End Function
+
+Private Sub WriteLogHeaders(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:E1").Value = Array("processed_at", "source_file", "status", "merged_rows", "message")
+End Sub
+
+Private Sub AppendProcessingLog(ByVal worksheet As Worksheet, ByVal sourceFileName As String, ByVal statusText As String, ByVal mergedRows As Long, ByVal messageText As String)
+    Dim nextRow As Long
+
+    nextRow = worksheet.Cells(worksheet.Rows.Count, 1).End(xlUp).Row + 1
+    worksheet.Cells(nextRow, 1).Value = Now
+    worksheet.Cells(nextRow, 2).Value = sourceFileName
+    worksheet.Cells(nextRow, 3).Value = statusText
+    worksheet.Cells(nextRow, 4).Value = mergedRows
+    worksheet.Cells(nextRow, 5).Value = messageText
+End Sub
+
+Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
+    worksheet.Columns("A:E").AutoFit
+    worksheet.Rows(1).Font.Bold = True
+    worksheet.Range("A1:E1").AutoFilter
+End Sub
+
+Private Function JoinDictionaryValues(ByVal dictionary As Object) As String
+    Dim value As Variant
+    Dim result As String
+
+    For Each value In dictionary.Items
+        If Len(result) > 0 Then result = result & "; "
+        result = result & CStr(value)
+    Next value
+    JoinDictionaryValues = result
+End Function
+
 Private Function JoinDictionaryKeys(ByVal dictionary As Object) As String
     Dim key As Variant
     Dim result As String
@@ -422,6 +626,8 @@ Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
             If seen.Exists(duplicateKey) Then
                 worksheet.Rows(rowIndex).Interior.Color = RGB(255, 230, 153)
                 worksheet.Rows(CLng(seen(duplicateKey))).Interior.Color = RGB(255, 230, 153)
+                AppendValidationMessage worksheet, rowIndex, "DUPLICATE", "중복 후보: " & CStr(seen(duplicateKey)) & "행"
+                AppendValidationMessage worksheet, CLng(seen(duplicateKey)), "DUPLICATE", "중복 후보: " & CStr(rowIndex) & "행"
             Else
                 seen.Add duplicateKey, rowIndex
             End If
@@ -447,6 +653,7 @@ Private Sub MarkUnmatchedFirewalls(ByVal worksheet As Worksheet)
         If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Value))) = 0 Then
             worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Value = "UNMATCHED"
             worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Interior.Color = RGB(255, 199, 206)
+            AppendValidationMessage worksheet, rowIndex, "UNMATCHED", "적용 대상 방화벽 없음"
         End If
     Next rowIndex
 End Sub
@@ -462,13 +669,16 @@ Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
 End Function
 
 Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
-    worksheet.Range("A1:N1").Value = Array("source_file", "source_row", "target_firewalls", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고")
+    worksheet.Range("A1:U1").Value = Array("source_file", "source_row", "target_firewalls", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "validation_status", "validation_message", "match_details", "firewall_path", "source_zone", "destination_zone", "zone_path")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:B1").Value = Array("firewall_name", "cidr_list")
-        worksheet.Range("A2:B4").Value = Array(Array("FW-INTERNAL-01", "10.10.0.0/16;172.16.1.0/24"), Array("FW-DMZ-01", "10.20.0.0/16;172.16.20.0/24"), Array("FW-SERVER-01", "10.30.0.0/16;172.16.30.0/24"))
+        worksheet.Range("A1:D1").Value = Array("firewall_name", "vendor", "enabled", "comment")
+        worksheet.Range("A2:D4").Value = Array( _
+            Array("SECUI-FW-01", "SECUI", "Y", "내부-서버 구간"), _
+            Array("SECUI-FW-02", "SECUI", "Y", "중간-DMZ 구간"), _
+            Array("SECUI-FW-03", "SECUI", "Y", "DMZ-외부 구간"))
     End If
 End Sub
 
@@ -477,13 +687,14 @@ Private Sub WriteSettings(ByVal worksheet As Worksheet)
         worksheet.Range("A1:B1").Value = Array("key", "value")
         worksheet.Range("A2:B2").Value = Array("request_folder", "")
         worksheet.Range("A3:B3").Value = Array("parse_targets", "출발지IP;목적지IP")
+        worksheet.Range("A4:B4").Value = Array("route_legacy_fallback", "FALSE")
     End If
 End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:N").AutoFit
+    worksheet.Columns("A:U").AutoFit
     worksheet.Rows(1).Font.Bold = True
-    worksheet.Range("A1:N1").AutoFilter
+    worksheet.Range("A1:U1").AutoFilter
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String
@@ -493,6 +704,36 @@ End Function
 Private Sub FormatFirewallsSheet(ByVal worksheet As Worksheet)
     worksheet.Columns("A:B").AutoFit
     worksheet.Rows(1).Font.Bold = True
+End Sub
+
+Private Sub WriteNetworkHeaders(ByVal worksheet As Worksheet)
+    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
+        worksheet.Range("A1:E1").Value = Array("network_name", "network_cidr", "zone", "site", "enabled")
+        worksheet.Range("A2:E7").Value = Array( _
+            Array("업무PC망", "10.10.0.0/16", "internal", "본사", "Y"), _
+            Array("서버망", "172.16.1.0/24", "server", "IDC", "Y"), _
+            Array("중간망", "10.30.0.0/16", "transit", "IDC", "Y"), _
+            Array("DMZ망", "10.20.0.0/16", "dmz", "IDC", "Y"), _
+            Array("외부", "0.0.0.0/0", "outside", "공통", "Y"), _
+            Array("서버DMZ", "172.16.20.0/24", "dmz", "IDC", "Y"))
+    End If
+End Sub
+
+Private Sub WriteRoutingHeaders(ByVal worksheet As Worksheet)
+    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
+        worksheet.Range("A1:G1").Value = Array("firewall_name", "src_zone", "dst_zone", "ingress_if", "egress_if", "path_order", "enabled")
+        worksheet.Range("A2:G5").Value = Array( _
+            Array("SECUI-FW-01", "internal", "server", "eth1", "eth2", 10, "Y"), _
+            Array("SECUI-FW-01", "internal", "transit", "eth1", "eth3", 20, "Y"), _
+            Array("SECUI-FW-02", "transit", "dmz", "eth1", "eth2", 30, "Y"), _
+            Array("SECUI-FW-03", "dmz", "outside", "eth1", "eth2", 40, "Y"))
+    End If
+End Sub
+
+Private Sub FormatGenericSheet(ByVal worksheet As Worksheet, ByVal cols As String)
+    worksheet.Columns(cols).AutoFit
+    worksheet.Rows(1).Font.Bold = True
+    worksheet.Range(Replace(cols, ":", "1:") & "1").AutoFilter
 End Sub
 
 Private Function RequestFolderPath(ByVal settingsSheet As Worksheet) As String

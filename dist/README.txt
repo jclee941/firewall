@@ -1,16 +1,33 @@
-firewall-policy-automation starter files
+firewall-policy-automation distribution
 
-Files:
-- firewall-policy-automation-starter.xlsx: preconfigured sheets (requests, firewalls, settings, sample-request-format)
-- FirewallPolicyAutomation.bas: VBA macro module to import into Excel
+Primary artifact:
+- firewall-policy-automation.xlsm : ready-to-use macro-enabled workbook
+  (built on Linux by scripts/build_xlsm.py using pyOpenVBA + openpyxl;
+   contains modules FirewallPolicyAutomation and FirewallRouteAnalysis,
+   and the sheets requests, network_definitions, firewalls, routing_paths,
+   settings, processing_log, sample-request-format, usage).
 
-To make the macro-enabled workbook in Excel:
-1. Open firewall-policy-automation-starter.xlsx
-2. Save As: firewall-policy-automation.xlsm
-3. Press Alt+F11
-4. File > Import File... > FirewallPolicyAutomation.bas
-5. Run SetupFirewallAutomationWorkbook once
-6. Set settings!B2 request_folder or run SelectRequestFolder
-7. Run MergeFirewallRequestFolder
+How to (re)build the .xlsm (no Windows / Excel / PowerShell needed):
+1. From the repo root, create the venv once:
+     python3 -m venv .venv && ./.venv/bin/pip install pyOpenVBA openpyxl pytest
+2. Build:
+     ./.venv/bin/python scripts/build_xlsm.py
+   Output: dist/firewall-policy-automation.xlsm
 
-Note: creating a real .xlsm with embedded VBA requires Excel or an existing vbaProject.bin. This Linux environment generated the configured workbook and macro source only.
+How to use the workbook:
+1. Open dist/firewall-policy-automation.xlsm in Microsoft Excel (enable macros).
+2. Register IP ranges -> zones in the network_definitions sheet.
+3. Register firewalls in the firewalls sheet.
+4. Register zone-to-zone routing in the routing_paths sheet.
+5. Put request workbooks in a folder, set settings!B2 (request_folder),
+   then run macro MergeFirewallRequestFolder (Alt+F8).
+6. To re-run only the path analysis, run macro AnalyzeRequestRoutes (Alt+F8).
+7. Review requests columns: target_firewalls, firewall_path, zone_path,
+   source_zone, destination_zone, validation_status, validation_message,
+   match_details; and the processing_log sheet.
+
+Macros are invoked via the Alt+F8 macro dialog. The workbook does not ship
+with on-sheet buttons; you may add your own and assign the macros if desired.
+
+Legacy: build-xlsm.ps1 (Windows Excel COM) and the *-starter.xlsx/.zip files
+are retained only for reference. The supported build path is scripts/build_xlsm.py.

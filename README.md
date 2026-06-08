@@ -1,14 +1,14 @@
 # Firewall Policy Excel Automation
 
-DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정책 신청서를 통합 관리하는 저장소입니다.
+DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정책 신청서를 통합 관리하는 저장소입니다. 신청서 대역과 방화벽 대역의 단순 CIDR 겹침만 보지 않고, IP 대역으로 결정되는 zone과 zone 사이 라우팅 경로를 따라 어떤 방화벽을 통과하는지(적용대상방화벽 = 통과 방화벽 경로)를 분석합니다.
 
 ## 목표
 
-- 신청자가 작성한 Excel 파일을 특정 폴더에 모읍니다.
-- 매크로 사용 통합 문서(`.xlsm`)에서 버튼/매크로로 폴더를 선택합니다.
-- 폴더 안의 신청 Excel 파일을 하나의 `requests` 시트로 통합합니다.
-- `firewalls` 시트에 등록한 방화벽 대역을 재사용합니다.
-- `settings` 시트에 등록한 파싱 대상 컬럼으로 적용 대상 방화벽을 자동 산정합니다.
+- 신청자가 작성한 Excel 파일을 한 폴더에 모읍니다.
+- `network_definitions` 시트의 IP 대역과 zone 매핑으로 출발지/목적지의 zone을 결정합니다.
+- `routing_paths` 시트의 zone 간 라우팅 경로로 통과하는 방화벽을 순서대로 결정합니다.
+- 매크로 사용 통합 문서(`.xlsm`)에서 버튼/매크로로 폴더를 선택하고 통합을 실행합니다.
+- `requests` 시트에 통합 결과와 검증 상태, 통과 경로를 남깁니다.
 - 원본 파일명과 원본 행 번호를 남겨 추적 가능하게 합니다.
 
 ## 저장소 구조
@@ -19,77 +19,168 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 │   └── FirewallPolicyAutomation.bas   # Excel VBA 매크로 모듈
 ├── docs/
 │   ├── excel-native.md                # 설치/운영 절차
-│   └── excel-schema.md                # 신청서 컬럼 정의
+│   ├── excel-schema.md                # 시트/컬럼/검증 정의
+│   └── research-notes.md
+├── scripts/
+│   └── build_xlsm.py                  # Linux에서 .xlsm 빌드 (pyOpenVBA + openpyxl)
+├── tests/
+│   ├── route_oracle.py                # Python 오라클: 라우팅 알고리즘
+│   └── test_route_oracle.py           # 알고리즘 회귀 테스트
+├── firewall-policy-automation.xlsx    # 베이스 템플릿
+├── dist/                              # 빌드된 .xlsm 산출물 위치
 ├── .gitignore
 └── README.md
 ```
 
 ## 빠른 시작
 
-클론 후 바로 열어볼 수 있는 기본 파일은 루트의 `firewall-policy-automation.xlsx`입니다.
+Linux/macOS/Windows 어디서나 아래 한 줄로 매크로가 내장된 `dist/firewall-policy-automation.xlsm`이 생성됩니다. Excel을 띄우거나 VBA 편집기를 열 필요가 없습니다.
 
-이 파일은 아래 시트가 미리 구성되어 있습니다.
+```bash
+./.venv/bin/python scripts/build_xlsm.py
+```
+
+산출물은 `dist/firewall-policy-automation.xlsm`입니다. 이 파일을 열면 `requests`, `network_definitions`, `firewalls`, `routing_paths`, `settings` 시트가 미리 생성되어 있습니다. 매크로는 `Alt+F8`(매크로 대화상자)로 실행하거나, 원하면 Excel에서 도형/버튼에 매크로를 직접 연결해 사용합니다. 이후 운영은 이 `.xlsm` 파일 하나로 진행합니다.
+
+> 빌드 스크립트는 `pyOpenVBA`로 `vbaProject.bin`을 만들고 `openpyxl`로 매크로/시트/스타일을 합칩니다. Windows Excel이나 PowerShell은 필요 없습니다.
+
+## 시트 구성
+
+기본 템플릿 `firewall-policy-automation.xlsx`에는 아래 시트가 미리 구성되어 있습니다.
 
 | 시트 | 역할 |
 |---|---|
-| `requests` | 통합 결과 |
-| `firewalls` | 방화벽 대역 등록 |
-| `settings` | 신청서 폴더와 파싱 대상 등록 |
+| `requests` | 신청서 통합 결과 (방화벽 경로/검증 포함) |
+| `network_definitions` | IP 대역 -> zone 매핑 (대역정의) |
+| `firewalls` | 방화벽 장비 목록 (vendor, comment) |
+| `routing_paths` | zone 간 라우팅 경로 (존-존 간선) |
+| `settings` | 신청서 폴더, 파싱 대상, 라우팅 옵션 등록 |
 | `sample-request-format` | 신청서 양식 예시 |
+| `processing_log` | 파일별 처리 결과/오류 로그 |
 | `usage` | 사용 순서 |
 
-주의: 이 환경은 Linux라 Excel의 `vbaProject.bin`을 생성할 수 없어, 매크로가 내장된 진짜 `.xlsm` 파일을 자동 생성할 수 없습니다. Excel에서 `firewall-policy-automation.xlsx`를 열고 `.xlsm`으로 저장한 뒤 `vba/FirewallPolicyAutomation.bas`를 한 번 가져오면 그 이후부터는 해당 `.xlsm`만 쓰면 됩니다.
+진행 순서는 다음과 같습니다.
 
-1. `firewall-policy-automation.xlsx`를 엽니다.
-2. `Save As`로 `firewall-policy-automation.xlsm` 저장합니다.
-3. `Alt + F11`로 VBA 편집기를 엽니다.
-4. `File > Import File...`에서 `vba/FirewallPolicyAutomation.bas`를 가져옵니다.
-5. Excel로 돌아와 매크로 `SetupFirewallAutomationWorkbook`를 실행합니다.
-6. `firewalls` 시트에 방화벽명과 CIDR 대역을 등록합니다.
-7. `settings` 시트의 `request_folder`에 신청서 폴더 경로를 등록합니다.
-8. `settings` 시트의 `parse_targets`를 확인합니다. 기본값은 `출발지IP;목적지IP`입니다.
-9. 매크로 `MergeFirewallRequestFolder`를 실행합니다.
+1. `dist/firewall-policy-automation.xlsm`을 엽니다.
+2. `network_definitions` 시트에 IP 대역과 zone을 등록합니다.
+3. `firewalls` 시트에 방화벽명, vendor, 비고를 등록합니다.
+4. `routing_paths` 시트에 zone 사이 라우팅 경로(ingress/egress 인터페이스 포함)를 등록합니다.
+5. `settings` 시트의 `request_folder`에 신청서 폴더 경로를 등록하거나 매크로 `SelectRequestFolder`를 실행합니다.
+6. `settings` 시트의 `parse_targets`를 확인합니다. 기본값은 `출발지IP;목적지IP`입니다.
+7. `settings` 시트의 `route_legacy_fallback` 값을 정합니다. 기본값은 `FALSE`입니다.
+8. 매크로 `MergeFirewallRequestFolder`를 실행합니다 (`Alt+F8`).
+9. 라우트 분석만 다시 돌리려면 매크로 `AnalyzeRequestRoutes`를 실행합니다.
 
 ## 주요 매크로
 
 | 매크로 | 역할 |
 |---|---|
-| `SetupFirewallAutomationWorkbook` | `requests`, `firewalls`, `settings` 시트 생성 및 초기화 |
+| `SetupFirewallAutomationWorkbook` | 운영용 시트(`requests`, `network_definitions`, `firewalls`, `routing_paths`, `settings`) 생성 및 초기화 |
 | `CreateSampleRequestWorkbook` | 신청자가 사용할 샘플 신청서 Excel 생성 |
 | `SelectRequestFolder` | 신청서 폴더를 선택해서 `settings` 시트에 등록 |
-| `MergeFirewallRequestFolder` | 폴더 안 신청서를 통합하고 적용 대상 방화벽 자동 입력 |
+| `MergeFirewallRequestFolder` | 폴더 안 신청서를 통합하고 zone/라우팅 기반으로 적용 대상 방화벽과 검증 상태 자동 입력 |
+| `AnalyzeRequestRoutes` | `requests` 시트에 이미 통합된 행을 다시 라우트 분석 (방화벽/zone 데이터 갱신 시 유용) |
 
-## 재사용 등록 방식
+## 데이터 입력 규칙
 
-### 방화벽 대역 등록
+### network_definitions (대역정의)
 
-`firewalls` 시트에 등록합니다.
+IP 대역을 zone에 매핑합니다. 여러 IP/CIDR이 같은 zone에 속할 수 있습니다.
 
-| firewall_name | cidr_list |
+| 컬럼 | 설명 | 예시 |
+|---|---|---|
+| `network_name` | 대역 이름 | `internal-hq` |
+| `network_cidr` | CIDR 또는 단일 IP | `10.10.0.0/16` |
+| `zone` | 소속 zone | `INTERNAL` |
+| `site` | 사이트/위치 (선택) | `본사` |
+| `enabled` | 사용 여부 (TRUE/FALSE) | `TRUE` |
+
+### firewalls (방화벽 장비)
+
+장비 단위로 등록합니다. `cidr_list`는 더 이상 메인 매칭 기준이 아닙니다. 매칭은 `routing_paths`를 따라 결정됩니다.
+
+| 컬럼 | 설명 | 예시 |
 |---|---|
-| FW-INTERNAL-01 | `10.10.0.0/16;172.16.1.0/24` |
-| FW-DMZ-01 | `10.20.0.0/16;172.16.20.0/24` |
+| `firewall_name` | 방화벽 식별자 | `FW-INTERNAL-01` |
+| `vendor` | 제조사 (참고용) | `Fortinet` |
+| `enabled` | 사용 여부 | `TRUE` |
+| `comment` | 비고 | `본사 코어` |
 
-신청서의 `출발지IP`/`목적지IP`가 단일 IP여도 되고 CIDR 대역이어도 됩니다. 매크로는 단순 포함만 보지 않고 대역끼리 겹치는지 계산합니다. 예를 들어 신청서 `10.10.0.0/16`과 방화벽 대역 `10.10.10.0/24`는 서로 겹치는 것으로 판단합니다.
+### routing_paths (라우팅경로)
 
-여러 IP/대역은 세미콜론, 쉼표, 줄바꿈으로 구분할 수 있습니다.
+zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니다.
 
-### 파싱 대상 등록
+| 컬럼 | 설명 | 예시 |
+|---|---|---|
+| `firewall_name` | 이 hop을 처리하는 방화벽 | `FW-INTERNAL-01` |
+| `src_zone` | 출발 zone | `INTERNAL` |
+| `dst_zone` | 도착 zone | `DMZ` |
+| `ingress_if` | 인바운드 인터페이스 | `port1` |
+| `egress_if` | 아웃바운드 인터페이스 | `port2` |
+| `path_order` | 동일 zone-쌍에 hop이 여럿일 때 우선순위 | `10` |
+| `enabled` | 사용 여부 | `TRUE` |
 
-`settings` 시트에 등록합니다.
+## requests 시트 자동 입력 컬럼
 
-| key | value |
+`MergeFirewallRequestFolder`와 `AnalyzeRequestRoutes`는 `requests` 시트에 아래 컬럼을 자동으로 채웁니다.
+
+| 컬럼 | 설명 |
 |---|---|
-| request_folder | `C:\신청서\방화벽정책` |
-| parse_targets | `출발지IP;목적지IP` |
+| `source_file` | 원본 신청서 파일명 |
+| `source_row` | 원본 신청서 행 번호 |
+| `target_firewalls` | 통과 방화벽 경로. hop 순서를 세미콜론(`;`)으로 연결한 값. `MULTI_PATH`일 때는 우선 경로의 hop 순서를 그대로 둠 |
+| `firewall_path` | 통과한 방화벽을 등장 순서대로 보존한 경로 문자열 (예: `FW-INTERNAL-01 -> FW-DMZ-01`) |
+| `validation_status` | 검증 상태 값 (아래 표 참고) |
+| `validation_message` | 검증 사유 또는 참고 메시지 |
+| `match_details` | zone 결정과 라우팅 hop 선택 근거를 사람이 읽을 수 있게 풀어 쓴 문자열 |
+| `source_zone` | 출발지 IP/CIDR에서 longest-prefix match로 결정된 출발 zone |
+| `destination_zone` | 목적지 IP/CIDR에서 longest-prefix match로 결정된 도착 zone |
+| `zone_path` | zone 그래프 BFS 최단경로의 zone 열 (예: `INTERNAL -> DMZ -> EXTERNAL`) |
 
-`request_folder`가 비어 있거나 실제 폴더가 아니면 `MergeFirewallRequestFolder` 실행 시 폴더 선택창이 뜨고, 선택한 경로가 `settings` 시트에 저장됩니다.
+## 매칭 규칙 (적용대상방화벽 = 통과 방화벽 경로)
 
-예시:
+기존 버전은 출발지IP/목적지IP와 방화벽 `cidr_list`의 겹침으로 적용 대상을 골랐습니다. 새 버전은 다음과 같이 동작합니다.
 
-- 출발지IP와 목적지IP를 모두 기준으로 산정: `출발지IP;목적지IP`
-- 목적지IP만 기준으로 산정: `목적지IP`
-- 출발지IP/목적지IP/방향을 파싱 대상으로 등록: `출발지IP;목적지IP;방향`
+1. `network_definitions`에서 출발지 IP/CIDR과 가장 길게 겹치는 대역을 찾습니다. 그 대역의 zone이 `source_zone`이 됩니다. 목적지도 같은 방식으로 `destination_zone`을 결정합니다.
+2. `routing_paths`를 zone 그래프(방향 가중치 없음)로 보고, `source_zone`에서 `destination_zone`까지의 결정적 BFS 최단경로를 찾습니다. 결정적이란 같은 zone-쌍에 `path_order`가 작은 hop부터 시도한다는 뜻입니다.
+3. 경로 위의 각 hop에서 `firewall_name`을 모읍니다. hop 순서는 그대로 보존해서 `firewall_path`와 `zone_path`에 들어갑니다.
+4. `target_firewalls`는 hop에서 처음 등장한 방화벽만 남깁니다. 같은 방화벽이 경로에 두 번 나와도 한 번만 기록합니다.
+5. 출발/도착 zone이 같으면 `INTRA_ZONE`이 됩니다. 같은 zone 안 트래픽은 별도 방화벽이 개입하지 않으므로 `target_firewalls`는 비어 있습니다.
+6. zone 결정은 IP 단위가 아니라 CIDR 단위 longest-prefix match입니다. 신청서 값이 `10.10.0.0/16`이고 `network_definitions`에 `10.10.0.0/16`과 `10.10.0.0/15`가 둘 다 있으면 더 긴 `10.10.0.0/16`이 이깁니다.
+
+여러 방화벽이 정상입니다. `MULTI_PATH`로 표시되더라도 우선 경로의 hop 순서를 따라 한 줄로 결과가 나옵니다.
+
+## validation_status 값
+
+| 값 | 의미 |
+|---|---|
+| `OK` | 출발/도착 zone 결정, 라우팅 경로 결정, 모든 hop 정상. 통과 방화벽이 한 줄로 채워짐 |
+| `MULTI_PATH` | zone 그래프에서 최단 hop 수의 경로가 둘 이상. 우선 경로가 적용되며 `validation_message`에 후보 수를 남김 |
+| `INTRA_ZONE` | 출발 zone과 도착 zone이 동일. 방화벽이 개입하지 않으므로 `target_firewalls`는 비어 있음 |
+| `ZONE_UNRESOLVED` | 출발 또는 도착 IP/CIDR이 `network_definitions` 어느 대역과도 겹치지 않음. zone을 결정할 수 없음 |
+| `NO_PATH` | zone 그래프에 출발에서 도착으로 가는 경로가 없음. 라우팅 데이터 보강 필요 |
+| `DIRECTION_MISMATCH` | 신청서 방향(`IN`/`OUT`/빈값)과 그래프 방향이 맞지 않음. `validation_message`에 시도한 방향을 남김 |
+| `LEGACY_FALLBACK` | 라우팅 데이터가 비어 있거나 경로를 못 찾아서 기존 CIDR 겹침 방식으로 폴백함. `settings.route_legacy_fallback=TRUE`일 때만 발생 |
+
+## direction (방향) 의미
+
+신청서 `방향` 컬럼은 CIDR 계산의 입력이 아니라 라우팅 방향 제약입니다.
+
+| 값 | 의미 |
+|---|---|
+| 빈값 또는 `BOTH` | 정방향 경로를 먼저 시도하고, 없으면 출발/도착을 뒤집어 역방향 경로를 다시 찾음 |
+| `OUT` | 출발 -> 도착 한 방향만 시도 |
+| `IN` | 도착 -> 출발 한 방향만 시도 (외부에서 내부로 들어오는 트래픽 표현) |
+
+## settings 시트 키
+
+| key | 설명 | 기본값 |
+|---|---|---|
+| `request_folder` | 신청서 폴더 경로 | 비어 있음 (실행 시 폴더 선택창) |
+| `parse_targets` | 파싱 대상 컬럼 (세미콜론 구분) | `출발지IP;목적지IP` |
+| `route_legacy_fallback` | 라우팅 실패 시 기존 CIDR 겹침 방식으로 폴백할지 여부 (TRUE/FALSE) | `FALSE` |
+
+`route_legacy_fallback`이 `FALSE`이면 라우팅 데이터가 없거나 경로를 못 찾을 때 그 행은 `NO_PATH` 또는 `ZONE_UNRESOLVED`로 남고 CIDR 폴백을 하지 않습니다. 기존 양식을 임시로 받아야 할 때만 `TRUE`로 두세요.
 
 ## 신청서 기본 컬럼
 
@@ -101,25 +192,15 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 | 목적지 | 목적지 이름/설명 | 업무시스템 |
 | 프로토콜 | TCP/UDP/ICMP 등 | TCP |
 | 포트 | 포트 또는 포트 범위 | 443 |
-| 방향 | 정책 방향 | IN |
+| 방향 | 정책 방향 (OUT/IN/빈값) | OUT |
 | 용도 | 신청 목적 | HTTPS 업무 연동 |
 | 시작일 | 시작일 | 2026-01-01 |
 | 종료일 | 종료일 | 2026-12-31 |
 | 비고 | 비고 | 정기 신청 |
 
-통합 결과에는 매크로가 아래 컬럼을 자동으로 추가/입력합니다.
-
-| 컬럼 | 설명 |
-|---|---|
-| source_file | 원본 신청서 파일명 |
-| source_row | 원본 신청서 행 번호 |
-| target_firewalls | 적용 대상 방화벽 |
-
-중복 후보는 `출발지IP + 목적지IP + 프로토콜 + 포트 + 방향 + 용도` 조합으로 판단해 노란색으로 표시합니다. 매칭되는 방화벽이 없으면 `target_firewalls`에 `UNMATCHED`가 입력되며 빨간색으로 표시됩니다.
-
 ## 신청서 폴더의 xlsx 구조
 
-현재 매크로는 폴더 안 각 `.xlsx/.xlsm/.xls` 파일의 첫 번째 시트에서 `No` 또는 `번호`가 있는 행을 헤더 행으로 봅니다. 예를 들어 B열이 `No`이고 C/D열부터 출발지 정보가 시작되는 양식도 지원합니다.
+현재 매크로는 폴더 안 각 `.xlsx/.xlsm/.xls` 파일의 첫 번째 시트에서 `No` 또는 `번호`가 있는 행을 헤더 행으로 봅니다. B열이 `No`이고 C/D열부터 출발지 정보가 시작되는 양식도 지원합니다.
 
 헤더 행에는 아래 의미의 컬럼이 있어야 합니다.
 
@@ -140,6 +221,13 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 | 프로토콜 | Protocol, Proto |
 | 포트 | Port, 목적지포트 |
 | 용도 | 목적, Usage, Purpose |
+
+## 검증과 QA
+
+이 저장소의 LibreOffice는 매크로 실행 검증이 불가능한 상태입니다. 그래서 다음 두 단계로 알고리즘과 산출물을 검증합니다.
+
+- 알고리즘: `tests/test_route_oracle.py`가 `tests/route_oracle.py`의 Python 오라클을 회귀 테스트합니다. 매크로와 같은 결정적 BFS/longest-prefix 로직을 Python에서 다시 구현해 결과를 비교합니다. 변경 후 `pytest`를 한 번 돌려 통과를 확인합니다.
+- 산출물: 빌드된 `dist/firewall-policy-automation.xlsm`은 zip 안의 `xl/vbaProject.bin`, 모듈명(`FirewallPolicyAutomation`), 시트 목록, 헤더 행으로 구조를 검증합니다. Excel을 실제로 띄우지 않아도 매크로가 내장됐는지와 시트가 맞게 들어갔는지를 확인할 수 있습니다.
 
 ## DRM 관련 전제
 

@@ -2,3 +2,9 @@
 incoming-requests/
 merged-requests.*
 *.tmp
+
+# Python build/test environment
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
