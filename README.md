@@ -136,6 +136,9 @@ zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니
 | `source_zone` | 출발지 IP/CIDR에서 longest-prefix match로 결정된 출발 zone |
 | `destination_zone` | 목적지 IP/CIDR에서 longest-prefix match로 결정된 도착 zone |
 | `zone_path` | zone 그래프 BFS 최단경로의 zone 열 (예: `INTERNAL -> DMZ -> EXTERNAL`) |
+| `request_team` | 신청서 상위 폴더명의 팀/센터 부분 (예: `정보보호센터`) |
+| `request_doc_no` | 신청서 상위 폴더명의 문서번호 부분 (예: `1234`) |
+| `request_folder` | 신청서가 들어 있던 원본 폴더명 전체 |
 
 ## 매칭 규칙 (적용대상방화벽 = 통과 방화벽 경로)
 
@@ -179,6 +182,7 @@ zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니
 | `request_folder` | 신청서 폴더 경로 | 비어 있음 (실행 시 폴더 선택창) |
 | `parse_targets` | 파싱 대상 컬럼 (세미콜론 구분) | `출발지IP;목적지IP` |
 | `route_legacy_fallback` | 라우팅 실패 시 기존 CIDR 겹침 방식으로 폴백할지 여부 (TRUE/FALSE) | `FALSE` |
+| `header_alias` | 비표준 헤더 사용자 별칭. 형식: `출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소` | 비어 있음 |
 
 `route_legacy_fallback`이 `FALSE`이면 라우팅 데이터가 없거나 경로를 못 찾을 때 그 행은 `NO_PATH` 또는 `ZONE_UNRESOLVED`로 남고 CIDR 폴백을 하지 않습니다. 기존 양식을 임시로 받아야 할 때만 `TRUE`로 두세요.
 
@@ -222,12 +226,47 @@ zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니
 | 포트 | Port, 목적지포트 |
 | 용도 | 목적, Usage, Purpose |
 
+`settings` 시트의 `header_alias`에 등록하면 내장 별칭으로는 안 잡히는 회사별 비표준 헤더도 표준 컬럼으로 매핑합니다. (내장 별칭이 먼저 적용되고, 못 잡은 헤더만 사용자 별칭으로 보완됩니다.)
+
+## 병합 셀 / 하위폴더 / 폴더명 파싱
+
+### 세로 병합 셀
+
+신청서에서 한 신청 건이 여러 행에 걸쳐 `출발지IP`/`목적지IP` 셀을 **세로 병합**한 양식도 지원합니다. 병합 영역의 값이 아래 행에도 적용되어 행이 누락되지 않습니다. (데이터 셀은 병합 좌상단 값을 `MergeArea`로 읽고, 헤더 행은 좌상단만 인식합니다.) 제목/그룹 헤더가 헤더 위에 병합되어 있어도 `No`/`번호` 행을 찾아 우회합니다.
+
+### 하위폴더 재귀
+
+`request_folder` 아래의 하위폴더까지 재귀적으로 탐색해 신청서를 모읍니다. 팀/센터별로 폴더를 나눠 제출받는 운영을 그대로 처리합니다.
+
+### 폴더명 파싱 (팀/문서번호)
+
+신청서의 상위 폴더명을 마지막 `_` 기준으로 나누어 `request_team`/`request_doc_no` 컬럼에 기록합니다. 결재문서 내용은 파싱하지 않고 폴더명만 사용합니다.
+
+| 폴더명 | request_team | request_doc_no |
+|---|---|---|
+| `정보보호센터_1234` | 정보보호센터 | 1234 |
+| `정보보호_2팀_5678` | 정보보호_2팀 | 5678 |
+| `인프라팀` | 인프라팀 | (빈값) |
+
 ## 검증과 QA
 
 이 저장소의 LibreOffice는 매크로 실행 검증이 불가능한 상태입니다. 그래서 다음 두 단계로 알고리즘과 산출물을 검증합니다.
 
 - 알고리즘: `tests/test_route_oracle.py`가 `tests/route_oracle.py`의 Python 오라클을 회귀 테스트합니다. 매크로와 같은 결정적 BFS/longest-prefix 로직을 Python에서 다시 구현해 결과를 비교합니다. 변경 후 `pytest`를 한 번 돌려 통과를 확인합니다.
 - 산출물: 빌드된 `dist/firewall-policy-automation.xlsm`은 zip 안의 `xl/vbaProject.bin`, 모듈명(`FirewallPolicyAutomation`), 시트 목록, 헤더 행으로 구조를 검증합니다. Excel을 실제로 띄우지 않아도 매크로가 내장됐는지와 시트가 맞게 들어갔는지를 확인할 수 있습니다.
+
+### 빌드 / 릴리즈 자동화
+
+- 로컬 빌드: `./.venv/bin/python scripts/build_xlsm.py` → `dist/firewall-policy-automation.xlsm` 생성 (Excel/PowerShell 불필요, Linux에서 동작).
+- CI(`.github/workflows/ci.yml`): master/main push와 PR마다 의존성 설치 → `pytest` → 빌드 → 산출물 구조 검증.
+- 릴리즈(`.github/workflows/release.yml`): `v*` 태그를 push하면 자동으로 빌드·테스트·검증 후 GitHub 릴리즈를 생성하고 `.xlsm`을 첨부합니다.
+
+```bash
+# 새 버전 배포 (빌드·테스트·릴리즈 전부 자동)
+git tag v1.0.2 && git push origin v1.0.2
+```
+
+의존성 버전은 `requirements.txt`에 고정되어 있어 CI 재현성이 보장됩니다.
 
 ## DRM 관련 전제
 

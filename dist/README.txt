@@ -28,6 +28,5 @@ How to use the workbook:
 
 Macros are invoked via the Alt+F8 macro dialog. The workbook does not ship
 with on-sheet buttons; you may add your own and assign the macros if desired.
-
-Legacy: build-xlsm.ps1 (Windows Excel COM) and the *-starter.xlsx/.zip files
-are retained only for reference. The supported build path is scripts/build_xlsm.py.
+Build is automated: scripts/build_xlsm.py (Linux, no Excel/PowerShell). CI and
+tag-driven release workflows build/test/publish this .xlsm automatically.
