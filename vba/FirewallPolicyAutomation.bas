@@ -251,11 +251,11 @@ Private Function AddressListMatchesCidr(ByVal addressList As String, ByVal cidrL
     Dim addressIndex As Long
     Dim cidrIndex As Long
 
-    addresses = Split(addressList, ";")
-    cidrs = Split(cidrList, ";")
+    addresses = SplitAddressList(addressList)
+    cidrs = SplitAddressList(cidrList)
     For addressIndex = LBound(addresses) To UBound(addresses)
         For cidrIndex = LBound(cidrs) To UBound(cidrs)
-            If IpMatchesCidr(Trim$(addresses(addressIndex)), Trim$(cidrs(cidrIndex))) Then
+            If NetworkRangesOverlap(Trim$(addresses(addressIndex)), Trim$(cidrs(cidrIndex))) Then
                 AddressListMatchesCidr = True
                 Exit Function
             End If
@@ -263,34 +263,67 @@ Private Function AddressListMatchesCidr(ByVal addressList As String, ByVal cidrL
     Next addressIndex
 End Function
 
-Private Function IpMatchesCidr(ByVal ipText As String, ByVal cidrText As String) As Boolean
-    Dim ipParts() As String
-    Dim cidrParts() As String
-    Dim baseIp As String
-    Dim prefixLength As Long
-    Dim ipValue As Double
-    Dim baseValue As Double
-    Dim blockSize As Double
+Private Function SplitAddressList(ByVal addressList As String) As String()
+    Dim normalized As String
+
+    normalized = Replace(addressList, vbCrLf, ";")
+    normalized = Replace(normalized, vbCr, ";")
+    normalized = Replace(normalized, vbLf, ";")
+    normalized = Replace(normalized, ",", ";")
+    normalized = Replace(normalized, "，", ";")
+    SplitAddressList = Split(normalized, ";")
+End Function
+
+Private Function NetworkRangesOverlap(ByVal leftCidr As String, ByVal rightCidr As String) As Boolean
+    Dim leftStart As Double
+    Dim leftEnd As Double
+    Dim rightStart As Double
+    Dim rightEnd As Double
 
     On Error GoTo NotMatched
-    If Len(ipText) = 0 Or Len(cidrText) = 0 Then Exit Function
-    ipParts = Split(ipText, "/")
-    cidrParts = Split(cidrText, "/")
-    baseIp = cidrParts(0)
-    If UBound(cidrParts) = 0 Then
-        prefixLength = 32
-    Else
-        prefixLength = CLng(cidrParts(1))
-    End If
-
-    ipValue = IpToNumber(ipParts(0))
-    baseValue = IpToNumber(baseIp)
-    blockSize = 2 ^ (32 - prefixLength)
-    IpMatchesCidr = Fix(ipValue / blockSize) = Fix(baseValue / blockSize)
+    If Len(leftCidr) = 0 Or Len(rightCidr) = 0 Then Exit Function
+    leftStart = CidrStart(leftCidr)
+    leftEnd = CidrEnd(leftCidr)
+    rightStart = CidrStart(rightCidr)
+    rightEnd = CidrEnd(rightCidr)
+    NetworkRangesOverlap = leftStart <= rightEnd And rightStart <= leftEnd
     Exit Function
 
 NotMatched:
-    IpMatchesCidr = False
+    NetworkRangesOverlap = False
+End Function
+
+Private Function CidrStart(ByVal cidrText As String) As Double
+    Dim baseValue As Double
+    Dim blockSize As Double
+
+    baseValue = IpToNumber(CidrBaseIp(cidrText))
+    blockSize = CidrBlockSize(cidrText)
+    CidrStart = Fix(baseValue / blockSize) * blockSize
+End Function
+
+Private Function CidrEnd(ByVal cidrText As String) As Double
+    CidrEnd = CidrStart(cidrText) + CidrBlockSize(cidrText) - 1
+End Function
+
+Private Function CidrBaseIp(ByVal cidrText As String) As String
+    CidrBaseIp = Split(cidrText, "/")(0)
+End Function
+
+Private Function CidrPrefixLength(ByVal cidrText As String) As Long
+    Dim cidrParts() As String
+
+    cidrParts = Split(cidrText, "/")
+    If UBound(cidrParts) = 0 Then
+        CidrPrefixLength = 32
+    Else
+        CidrPrefixLength = CLng(cidrParts(1))
+    End If
+    If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise vbObjectError + 1004, , "Invalid CIDR prefix: " & cidrText
+End Function
+
+Private Function CidrBlockSize(ByVal cidrText As String) As Double
+    CidrBlockSize = 2 ^ (32 - CidrPrefixLength(cidrText))
 End Function
 
 Private Function IpToNumber(ByVal ipText As String) As Double

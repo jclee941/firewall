@@ -26,26 +26,29 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 
 ## 빠른 시작
 
-바로 시작할 수 있는 영어 파일명 번들은 `dist/firewall-policy-automation-starter.zip`에 있습니다.
+클론 후 바로 열어볼 수 있는 기본 파일은 루트의 `firewall-policy-automation.xlsx`입니다.
 
-포함 파일:
+이 파일은 아래 시트가 미리 구성되어 있습니다.
 
-| 파일 | 역할 |
+| 시트 | 역할 |
 |---|---|
-| `firewall-policy-automation-starter.xlsx` | `requests`, `firewalls`, `settings`가 미리 구성된 시작 파일 |
-| `FirewallPolicyAutomation.bas` | Excel에 가져올 VBA 매크로 모듈 |
-| `README.txt` | 번들 사용 순서 |
+| `requests` | 통합 결과 |
+| `firewalls` | 방화벽 대역 등록 |
+| `settings` | 신청서 폴더와 파싱 대상 등록 |
+| `sample-request-format` | 신청서 양식 예시 |
+| `usage` | 사용 순서 |
 
-주의: 실제 매크로 포함 `.xlsm`은 Excel에서 `Save As .xlsm` 후 `.bas`를 가져와야 합니다. 이 저장소는 Linux 환경에서 생성되므로 Excel의 `vbaProject.bin`을 직접 만들 수 없습니다.
+주의: 이 환경은 Linux라 Excel의 `vbaProject.bin`을 생성할 수 없어, 매크로가 내장된 진짜 `.xlsm` 파일을 자동 생성할 수 없습니다. Excel에서 `firewall-policy-automation.xlsx`를 열고 `.xlsm`으로 저장한 뒤 `vba/FirewallPolicyAutomation.bas`를 한 번 가져오면 그 이후부터는 해당 `.xlsm`만 쓰면 됩니다.
 
-1. Excel에서 새 통합 문서를 만들고 `.xlsm`으로 저장합니다.
-2. `Alt + F11`로 VBA 편집기를 엽니다.
-3. `File > Import File...`에서 `vba/FirewallPolicyAutomation.bas`를 가져옵니다.
-4. Excel로 돌아와 매크로 `SetupFirewallAutomationWorkbook`를 실행합니다.
-5. `firewalls` 시트에 방화벽명과 CIDR 대역을 등록합니다.
-6. `settings` 시트의 `parse_targets`에 파싱 대상 컬럼을 등록합니다. 기본값은 `출발지IP;목적지IP`입니다.
+1. `firewall-policy-automation.xlsx`를 엽니다.
+2. `Save As`로 `firewall-policy-automation.xlsm` 저장합니다.
+3. `Alt + F11`로 VBA 편집기를 엽니다.
+4. `File > Import File...`에서 `vba/FirewallPolicyAutomation.bas`를 가져옵니다.
+5. Excel로 돌아와 매크로 `SetupFirewallAutomationWorkbook`를 실행합니다.
+6. `firewalls` 시트에 방화벽명과 CIDR 대역을 등록합니다.
 7. `settings` 시트의 `request_folder`에 신청서 폴더 경로를 등록합니다.
-8. 매크로 `MergeFirewallRequestFolder`를 실행합니다.
+8. `settings` 시트의 `parse_targets`를 확인합니다. 기본값은 `출발지IP;목적지IP`입니다.
+9. 매크로 `MergeFirewallRequestFolder`를 실행합니다.
 
 ## 주요 매크로
 
@@ -66,6 +69,10 @@ DRM 환경에서 PowerQuery 없이 Excel 네이티브 VBA만으로 방화벽 정
 |---|---|
 | FW-INTERNAL-01 | `10.10.0.0/16;172.16.1.0/24` |
 | FW-DMZ-01 | `10.20.0.0/16;172.16.20.0/24` |
+
+신청서의 `출발지IP`/`목적지IP`가 단일 IP여도 되고 CIDR 대역이어도 됩니다. 매크로는 단순 포함만 보지 않고 대역끼리 겹치는지 계산합니다. 예를 들어 신청서 `10.10.0.0/16`과 방화벽 대역 `10.10.10.0/24`는 서로 겹치는 것으로 판단합니다.
+
+여러 IP/대역은 세미콜론, 쉼표, 줄바꿈으로 구분할 수 있습니다.
 
 ### 파싱 대상 등록
 
