@@ -11,4 +11,4 @@ __pycache__/
 
 # legacy/untracked build artifacts
 dist/*.ps1
-dist/firewall-policy-automation-starter.*
+dist/*-starter.*
