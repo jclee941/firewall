@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 import openpyxl
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from pyopenvba import ExcelFile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -68,13 +68,12 @@ ROUTING_PATHS = [
 ]
 
 SETTINGS = [
-    ["key", "value"],
-    ["request_folder", ""],
-    ["parse_targets", "출발지IP;목적지IP"],
-    ["route_legacy_fallback", "FALSE"],
-    ["header_alias", ""],
+    ["key", "value", "설명"],
+    ["request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다."],
+    ["parse_targets", "출발지IP;목적지IP", "적용대상방화벽 산정에 쓸 IP 컬럼(세미콜론 구분). IP 컬럼만 등록."],
+    ["route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE)."],
+    ["header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소"],
 ]
-
 PROCESSING_LOG = [["processed_at", "source_file", "status", "merged_rows", "message"]]
 
 SAMPLE_FORMAT = [
@@ -130,6 +129,60 @@ EXAMPLE_REQUEST_ROWS = [
 ]
 
 
+# --------------------------------------------------------------------------- #
+# Visual styling (first-open readability; VBA macros may re-format at runtime)
+# --------------------------------------------------------------------------- #
+
+_HEADER_FILL = PatternFill("solid", fgColor="DCE6F1")
+_HEADER_FONT = Font(bold=True, color="1F3864")
+_HEADER_ALIGN = Alignment(horizontal="center", vertical="center")
+_THIN_BOTTOM = Border(bottom=Side(style="thin", color="9DB2CE"))
+
+_WIDTHS = {
+    "requests": {
+        "A": 18, "B": 9, "C": 26, "D": 16, "E": 12, "F": 16, "G": 12,
+        "H": 10, "I": 8, "J": 8, "K": 18, "L": 12, "M": 12, "N": 14,
+        "O": 16, "P": 30, "Q": 34, "R": 24, "S": 14, "T": 16, "U": 22,
+        "V": 16, "W": 14, "X": 20,
+    },
+    "firewalls": {"A": 16, "B": 10, "C": 9, "D": 28},
+    "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
+    "routing_paths": {"A": 16, "B": 12, "C": 12, "D": 12, "E": 12, "F": 12, "G": 9},
+    "settings": {"A": 22, "B": 26, "C": 60},
+    "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
+    "sample-request-format": {"A": 4, "B": 6, "C": 16, "D": 12, "E": 16,
+                              "F": 12, "G": 10, "H": 8, "I": 8, "J": 18,
+                              "K": 12, "L": 12, "M": 14},
+    "usage": {"A": 8, "B": 70},
+}
+
+_FILTER_SHEETS = {"requests", "firewalls", "network_definitions",
+                  "routing_paths", "processing_log"}
+
+_FREEZE = {"requests": "E2"}
+
+
+def _style_sheet(ws, header_row: int = 1):
+    from openpyxl.utils import get_column_letter
+    for col_letter, width in _WIDTHS.get(ws.title, {}).items():
+        ws.column_dimensions[col_letter].width = width
+    last_col = ws.max_column
+    for c in range(1, last_col + 1):
+        cell = ws.cell(row=header_row, column=c)
+        if cell.value is None:
+            continue
+        cell.font = _HEADER_FONT
+        cell.fill = _HEADER_FILL
+        cell.alignment = _HEADER_ALIGN
+        cell.border = _THIN_BOTTOM
+    ws.freeze_panes = _FREEZE.get(ws.title, "A2")
+    if ws.title in _FILTER_SHEETS:
+        ws.auto_filter.ref = (
+            f"A{header_row}:{get_column_letter(last_col)}"
+            f"{max(ws.max_row, header_row)}"
+        )
+
+
 def _write_rows(ws, rows):
     for r, row in enumerate(rows, start=1):
         for c, val in enumerate(row, start=1):
@@ -172,14 +225,12 @@ def main() -> int:
     for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=2):
         for key, val in example.items():
             base.cell(row=r, column=col_index[key], value=val)
-    for cell in base[1]:
-        cell.font = Font(bold=True)
+    _style_sheet(base)
 
     def add(title, rows):
         ws = wb.create_sheet(title)
         _write_rows(ws, rows)
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
+        _style_sheet(ws)
         return ws
 
     add("firewalls", FIREWALLS)
@@ -190,6 +241,7 @@ def main() -> int:
     # sample-request-format has a blank A column header
     sf = wb.create_sheet("sample-request-format")
     _write_rows(sf, SAMPLE_FORMAT)
+    _style_sheet(sf)
     add("usage", USAGE)
 
     wb.save(str(OUT))
