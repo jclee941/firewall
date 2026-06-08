@@ -269,17 +269,17 @@ End Function
 Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String)
     requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
     requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
-    requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("출발지ip")).Value))
-    requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("출발지")).Value))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("목적지ip")).Value))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("목적지")).Value))
-    requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = UCase$(Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("프로토콜")).Value)))
-    requestsSheet.Cells(targetRow, COL_PORT).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("포트")).Value))
-    requestsSheet.Cells(targetRow, COL_DIRECTION).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("방향")).Value))
-    requestsSheet.Cells(targetRow, COL_PURPOSE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("용도")).Value))
-    requestsSheet.Cells(targetRow, COL_START_DATE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("시작일")).Value))
-    requestsSheet.Cells(targetRow, COL_END_DATE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("종료일")).Value))
-    requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("비고")).Value))
+    requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("출발지ip"))))
+    requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("출발지"))))
+    requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("목적지ip"))))
+    requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("목적지"))))
+    requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = UCase$(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("프로토콜")))))
+    requestsSheet.Cells(targetRow, COL_PORT).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("포트"))))
+    requestsSheet.Cells(targetRow, COL_DIRECTION).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("방향"))))
+    requestsSheet.Cells(targetRow, COL_PURPOSE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("용도"))))
+    requestsSheet.Cells(targetRow, COL_START_DATE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("시작일"))))
+    requestsSheet.Cells(targetRow, COL_END_DATE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("종료일"))))
+    requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("비고"))))
     requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls(firewallsSheet, requestsSheet, targetRow)
     Dim reqTeam As String, reqDocNo As String
     ParseRequestFolderName folderName, reqTeam, reqDocNo
@@ -654,8 +654,21 @@ Private Function SourceLastRow(ByVal sourceSheet As Worksheet, ByVal headerMap A
 End Function
 
 Private Function RequestSourceRowHasData(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object) As Boolean
-    RequestSourceRowHasData = Len(Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("출발지ip")).Value))) > 0 Or _
-        Len(Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("목적지ip")).Value))) > 0
+    RequestSourceRowHasData = Len(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("출발지ip"))))) > 0 Or _
+        Len(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("목적지ip"))))) > 0
+End Function
+
+Private Function ReadDataCell(ByVal sourceSheet As Worksheet, ByVal r As Long, ByVal c As Long) As Variant
+    ' Read a request DATA cell, honoring merged ranges: a vertically/horizontally
+    ' merged data cell exposes its value only at the merge top-left, so we read
+    ' .MergeArea.Cells(1,1).Value. Header mapping stays raw (Option C).
+    With sourceSheet.Cells(r, c)
+        If .MergeCells Then
+            ReadDataCell = .MergeArea.Cells(1, 1).Value
+        Else
+            ReadDataCell = .Value
+        End If
+    End With
 End Function
 
 Private Sub WriteRowValidation(ByVal worksheet As Worksheet, ByVal rowIndex As Long)

@@ -78,6 +78,45 @@ class RequestParseError(Exception):
     pass
 
 
+def sheet_to_filled_rows(ws) -> list[list]:
+    """Read an openpyxl worksheet into list[list], propagating merged-cell
+    values ONLY across DATA rows (rows after the header row).
+
+    Rationale (Option C, confirmed against Excel/VBA semantics):
+      - Header row: a merged header's value lives only in the top-left cell;
+        filling it would create duplicate header names and (last-write-wins)
+        register the WRONG column. So the header row is left RAW.
+      - Data rows: a vertically merged request field (e.g. 출발지IP merged
+        B2:B3) must apply to every logical row, so we fill those down.
+    The VBA mirror reads headers with raw Cells(headerRow,c).Value and reads
+    data cells via .MergeArea.Cells(1,1).Value when .MergeCells is True.
+    """
+    # snapshot raw values (merged non-top-left cells are None here)
+    rows = [[c.value for c in row] for row in ws.iter_rows()]
+    # locate header row on the RAW grid (No/번호 lives in the merge top-left)
+    try:
+        header_row = find_header_row(rows)
+    except RequestParseError:
+        header_row = 0  # no header found; fill nothing, let caller raise
+    # propagate top-left value across merged ranges, DATA rows only
+    for rng in list(ws.merged_cells.ranges):
+        top = ws.cell(rng.min_row, rng.min_col).value
+        if top is None:
+            continue
+        for r in range(rng.min_row, rng.max_row + 1):
+            if header_row and r <= header_row:
+                continue  # never fill the header row (Option C)
+            for c in range(rng.min_col, rng.max_col + 1):
+                ri, ci = r - 1, c - 1
+                while ri >= len(rows):
+                    rows.append([])
+                while ci >= len(rows[ri]):
+                    rows[ri].append(None)
+                if rows[ri][ci] is None:
+                    rows[ri][ci] = top
+    return rows
+
+
 def _cell(rows: list[list], r1: int, c1: int):
     """1-based access; returns '' when out of range (mirrors empty cell)."""
     if r1 - 1 < 0 or r1 - 1 >= len(rows):
