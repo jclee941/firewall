@@ -12,3 +12,6 @@ __pycache__/
 # legacy/untracked build artifacts
 dist/*.ps1
 dist/*-starter.*
+
+# built artifact (non-deterministic timestamp); CI release.yml builds it from source
+dist/firewall-policy-automation.xlsm
