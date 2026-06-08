@@ -15,6 +15,22 @@ parses into the canonical request fields the route engine expects.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
+
+def _format_metadata_date(value) -> str:
+    """Format a date-typed cell as yyyy-mm-dd (locale-independent).
+
+    Mirrors VBA: 시작일/종료일 columns format real Date cells with
+    Format$(cell.Value, "yyyy-mm-dd"); string cells stay as-is.
+    Only applied to the start/end date columns.
+    """
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, date):
+        return value.strftime("%Y-%m-%d")
+    return str(value).strip() if value is not None else ""
+
 
 # --------------------------------------------------------------------------- #
 # Header normalization (mirror HeaderKey)
@@ -217,8 +233,8 @@ def parse_request_sheet(rows: list[list],
             "port": str(_cell(rows, r1, hmap["포트"])).strip(),
             "direction": str(_cell(rows, r1, hmap["방향"])).strip(),
             "purpose": str(_cell(rows, r1, hmap["용도"])).strip(),
-            "start_date": str(_cell(rows, r1, hmap["시작일"])).strip(),
-            "end_date": str(_cell(rows, r1, hmap["종료일"])).strip(),
+            "start_date": _format_metadata_date(_cell(rows, r1, hmap["시작일"])),
+            "end_date": _format_metadata_date(_cell(rows, r1, hmap["종료일"])),
             "note": str(_cell(rows, r1, hmap["비고"])).strip(),
         })
     return out

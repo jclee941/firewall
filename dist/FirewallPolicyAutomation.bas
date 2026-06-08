@@ -277,8 +277,8 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     requestsSheet.Cells(targetRow, COL_PORT).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("포트"))))
     requestsSheet.Cells(targetRow, COL_DIRECTION).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("방향"))))
     requestsSheet.Cells(targetRow, COL_PURPOSE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("용도"))))
-    requestsSheet.Cells(targetRow, COL_START_DATE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("시작일"))))
-    requestsSheet.Cells(targetRow, COL_END_DATE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("종료일"))))
+    requestsSheet.Cells(targetRow, COL_START_DATE).Value = FormatMetadataDate(ReadDataCell(sourceSheet, sourceRow, headerMap("시작일")))
+    requestsSheet.Cells(targetRow, COL_END_DATE).Value = FormatMetadataDate(ReadDataCell(sourceSheet, sourceRow, headerMap("종료일")))
     requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("비고"))))
     requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls(firewallsSheet, requestsSheet, targetRow)
     Dim reqTeam As String, reqDocNo As String
@@ -678,6 +678,17 @@ Private Function ReadDataCell(ByVal sourceSheet As Worksheet, ByVal r As Long, B
             ReadDataCell = .Value
         End If
     End With
+End Function
+
+Private Function FormatMetadataDate(ByVal value As Variant) As String
+    ' 시작일/종료일: 실제 Date 셀은 yyyy-mm-dd 로 결정적 포맷(로케일 비의존).
+    ' 문자열 날짜는 그대로 유지(VarType이 vbDate일 때만 포맷).
+    ' 오라클 _format_metadata_date(isinstance datetime/date)와 동일.
+    If VarType(value) = vbDate Then
+        FormatMetadataDate = Format$(value, "yyyy-mm-dd")
+    Else
+        FormatMetadataDate = Trim$(CStr(value))
+    End If
 End Function
 
 Private Sub WriteRowValidation(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
