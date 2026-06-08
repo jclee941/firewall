@@ -112,11 +112,16 @@ def find_header_row(rows: list[list]) -> int:
     raise RequestParseError("No/번호 헤더 행을 찾을 수 없습니다.")
 
 
-def build_header_map(rows: list[list], header_row: int) -> dict[str, int]:
+def build_header_map(rows: list[list], header_row: int,
+                     user_aliases: dict[str, str] | None = None) -> dict[str, int]:
     hmap: dict[str, int] = {}
     last_col = _last_column(rows, header_row)
     for c1 in range(1, last_col + 1):
-        name = canonical_header_name(header_key(_cell(rows, header_row, c1)))
+        raw = header_key(_cell(rows, header_row, c1))
+        name = canonical_header_name(raw)
+        # mirror VBA BuildHeaderMap: built-in first, then user alias fallback
+        if name == raw and user_aliases and raw in user_aliases:
+            name = user_aliases[raw]
         if name:
             hmap[name] = c1  # later columns overwrite earlier (mirror VBA dict assign)
     return hmap
@@ -144,16 +149,18 @@ def _row_has_data(rows, r1, hmap) -> bool:
             str(_cell(rows, r1, hmap["목적지ip"])).strip() != "")
 
 
-def parse_request_sheet(rows: list[list]) -> list[dict]:
+def parse_request_sheet(rows: list[list],
+                        user_aliases: dict[str, str] | None = None) -> list[dict]:
     """Parse a raw sheet into canonical request dicts.
 
     Returns one dict per data row with keys mirroring CopyRequestRow:
     source_ip, source_name, dest_ip, dest_name, protocol, port, direction,
     purpose, start_date, end_date, note, source_row.
     Raises RequestParseError on missing header row / required columns.
+    user_aliases mirrors settings header_alias (built-in canonical wins first).
     """
     header_row = find_header_row(rows)
-    hmap = build_header_map(rows, header_row)
+    hmap = build_header_map(rows, header_row, user_aliases)
     validate_required_headers(hmap)
 
     last_row = _source_last_row(rows, hmap)

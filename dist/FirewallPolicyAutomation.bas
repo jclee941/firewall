@@ -28,6 +28,11 @@ Private Const COL_FIREWALL_PATH As Long = 18
 Private Const COL_SOURCE_ZONE As Long = 19
 Private Const COL_DESTINATION_ZONE As Long = 20
 Private Const COL_ZONE_PATH As Long = 21
+Private Const COL_REQUEST_TEAM As Long = 22
+Private Const COL_REQUEST_DOC_NO As Long = 23
+Private Const COL_REQUEST_FOLDER As Long = 24
+
+Private mUserAliases As Object
 
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
@@ -75,6 +80,7 @@ Public Sub MergeFirewallRequestFolder()
     WriteRequestHeaders requestsSheet
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
+    LoadUserAliases settingsSheet
     folderPath = RequestFolderPath(settingsSheet)
     If Len(folderPath) = 0 Then Exit Sub
 
@@ -138,23 +144,89 @@ Public Sub CreateSampleRequestWorkbook()
 End Sub
 
 Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
+    ' Recurse subfolders so each team folder (e.g. 정보보호센터_1234) is scanned.
+    Dim mergedCount As Long
+    Dim folderName As String
+    folderName = FolderLeafName(folderPath)
+    mergedCount = MergeFolderTree(folderPath, folderName, requestsSheet, firewallsSheet, logSheet, nextRow)
+    MergeFolderFiles = mergedCount
+End Function
+
+Private Function MergeFolderTree(ByVal folderPath As String, ByVal folderName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
     Dim fileName As String
     Dim mergedCount As Long
+    Dim subFolders As Collection
+    Dim subName As Variant
 
+    ' 1) merge Excel files directly in this folder
     fileName = Dir(folderPath & Application.PathSeparator & "*.xls*")
     Do While Len(fileName) > 0
         If Left$(fileName, 2) <> "~$" Then
             If StrComp(folderPath & Application.PathSeparator & fileName, ThisWorkbook.FullName, vbTextCompare) <> 0 Then
-                mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, requestsSheet, firewallsSheet, logSheet, nextRow)
+                mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, folderName, requestsSheet, firewallsSheet, logSheet, nextRow)
             End If
         End If
         fileName = Dir()
     Loop
 
-    MergeFolderFiles = mergedCount
+    ' 2) collect subfolder names first (Dir state is reused by MergeWorkbookFile)
+    Set subFolders = CollectSubFolders(folderPath)
+    For Each subName In subFolders
+        mergedCount = mergedCount + MergeFolderTree(folderPath & Application.PathSeparator & CStr(subName), CStr(subName), requestsSheet, firewallsSheet, logSheet, nextRow)
+    Next subName
+
+    MergeFolderTree = mergedCount
 End Function
 
-Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function CollectSubFolders(ByVal folderPath As String) As Collection
+    Dim result As Collection
+    Dim entry As String
+    Set result = New Collection
+    entry = Dir(folderPath & Application.PathSeparator & "*", vbDirectory)
+    Do While Len(entry) > 0
+        If entry <> "." And entry <> ".." Then
+            If (GetAttr(folderPath & Application.PathSeparator & entry) And vbDirectory) = vbDirectory Then
+                result.Add entry
+            End If
+        End If
+        entry = Dir()
+    Loop
+    Set CollectSubFolders = result
+End Function
+
+Private Function FolderLeafName(ByVal folderPath As String) As String
+    Dim p As String
+    p = folderPath
+    Do While Len(p) > 0 And Right$(p, 1) = Application.PathSeparator
+        p = Left$(p, Len(p) - 1)
+    Loop
+    Dim sepPos As Long
+    sepPos = InStrRev(p, Application.PathSeparator)
+    If sepPos > 0 Then
+        FolderLeafName = Mid$(p, sepPos + 1)
+    Else
+        FolderLeafName = p
+    End If
+End Function
+
+Private Sub ParseRequestFolderName(ByVal folderName As String, ByRef team As String, ByRef docNo As String)
+    ' 정보보호센터_1234 -> team=정보보호센터, docNo=1234 (split on LAST underscore)
+    Dim s As String
+    s = Trim$(folderName)
+    If Len(s) = 0 Then
+        team = "" : docNo = "" : Exit Sub
+    End If
+    Dim idx As Long
+    idx = InStrRev(s, "_")
+    If idx = 0 Then
+        team = Trim$(s) : docNo = ""
+    Else
+        team = Trim$(Left$(s, idx - 1))
+        docNo = Trim$(Mid$(s, idx + 1))
+    End If
+End Sub
+
+Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal folderName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
     Dim sourceBook As Workbook
     Dim sourceSheet As Worksheet
     Dim headerMap As Object
@@ -176,7 +248,7 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
     lastRow = SourceLastRow(sourceSheet, headerMap)
     For rowIndex = headerRow + 1 To lastRow
         If RequestSourceRowHasData(sourceSheet, rowIndex, headerMap) Then
-            CopyRequestRow sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName
+            CopyRequestRow sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName, folderName
             nextRow = nextRow + 1
             mergedCount = mergedCount + 1
         End If
@@ -194,7 +266,7 @@ OpenFailed:
     MergeWorkbookFile = 0
 End Function
 
-Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal targetRow As Long, ByVal sourceFileName As String)
+Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String)
     requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
     requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
     requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("출발지ip")).Value))
@@ -209,6 +281,11 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     requestsSheet.Cells(targetRow, COL_END_DATE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("종료일")).Value))
     requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(sourceSheet.Cells(sourceRow, headerMap("비고")).Value))
     requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls(firewallsSheet, requestsSheet, targetRow)
+    Dim reqTeam As String, reqDocNo As String
+    ParseRequestFolderName folderName, reqTeam, reqDocNo
+    requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
+    requestsSheet.Cells(targetRow, COL_REQUEST_DOC_NO).Value = reqDocNo
+    requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
     WriteRowValidation requestsSheet, targetRow
 End Sub
 
@@ -466,7 +543,10 @@ Private Function BuildHeaderMap(ByVal worksheet As Worksheet, ByVal headerRow As
     Set headerMap = CreateObject("Scripting.Dictionary")
     lastColumn = worksheet.Cells(headerRow, worksheet.Columns.Count).End(xlToLeft).Column
     For columnIndex = 1 To lastColumn
-        headerName = CanonicalHeaderName(HeaderKey(CStr(worksheet.Cells(headerRow, columnIndex).Value)))
+        Dim rawKey As String
+        rawKey = HeaderKey(CStr(worksheet.Cells(headerRow, columnIndex).Value))
+        headerName = CanonicalHeaderName(rawKey)
+        If headerName = rawKey Then headerName = UserAliasCanonical(rawKey)
         If Len(headerName) > 0 Then headerMap(headerName) = columnIndex
     Next columnIndex
     Set BuildHeaderMap = headerMap
@@ -488,6 +568,59 @@ Private Function CanonicalHeaderName(ByVal headerName As String) As String
         Case "비고", "메모", "remark", "remarks", "note": CanonicalHeaderName = "비고"
         Case Else: CanonicalHeaderName = headerName
     End Select
+End Function
+
+Private Function UserAliasCanonical(ByVal rawKey As String) As String
+    ' Look up a user-defined alias loaded from settings header_alias.
+    If mUserAliases Is Nothing Then
+        UserAliasCanonical = rawKey
+        Exit Function
+    End If
+    If mUserAliases.Exists(rawKey) Then
+        UserAliasCanonical = CStr(mUserAliases(rawKey))
+    Else
+        UserAliasCanonical = rawKey
+    End If
+End Function
+
+Private Sub LoadUserAliases(ByVal settingsSheet As Worksheet)
+    ' Parse settings header_alias value: "출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소"
+    Set mUserAliases = CreateObject("Scripting.Dictionary")
+    Dim raw As String
+    raw = SettingsValue(settingsSheet, "header_alias")
+    If Len(Trim$(raw)) = 0 Then Exit Sub
+    Dim entries() As String, i As Long
+    entries = Split(raw, ";")
+    For i = LBound(entries) To UBound(entries)
+        Dim entry As String
+        entry = Trim$(entries(i))
+        Dim eqPos As Long
+        eqPos = InStr(entry, "=")
+        If eqPos > 0 Then
+            Dim canon As String
+            canon = HeaderKey(Left$(entry, eqPos - 1))
+            If Len(canon) > 0 Then
+                Dim aliasList() As String, j As Long
+                aliasList = Split(Mid$(entry, eqPos + 1), ",")
+                For j = LBound(aliasList) To UBound(aliasList)
+                    Dim a As String
+                    a = HeaderKey(aliasList(j))
+                    If Len(a) > 0 Then mUserAliases(a) = canon
+                Next j
+            End If
+        End If
+    Next i
+End Sub
+
+Private Function SettingsValue(ByVal settingsSheet As Worksheet, ByVal key As String) As String
+    Dim lastRow As Long, i As Long
+    lastRow = settingsSheet.Cells(settingsSheet.Rows.Count, 1).End(xlUp).Row
+    For i = 1 To lastRow
+        If LCase$(Trim$(CStr(settingsSheet.Cells(i, 1).Value))) = LCase$(key) Then
+            SettingsValue = Trim$(CStr(settingsSheet.Cells(i, 2).Value))
+            Exit Function
+        End If
+    Next i
 End Function
 
 Private Sub ValidateRequiredHeaders(ByVal headerMap As Object, ByVal sourceFileName As String)
@@ -669,7 +802,7 @@ Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
 End Function
 
 Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
-    worksheet.Range("A1:U1").Value = Array("source_file", "source_row", "target_firewalls", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "validation_status", "validation_message", "match_details", "firewall_path", "source_zone", "destination_zone", "zone_path")
+    worksheet.Range("A1:X1").Value = Array("source_file", "source_row", "target_firewalls", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "validation_status", "validation_message", "match_details", "firewall_path", "source_zone", "destination_zone", "zone_path", "request_team", "request_doc_no", "request_folder")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
@@ -688,13 +821,14 @@ Private Sub WriteSettings(ByVal worksheet As Worksheet)
         worksheet.Range("A2:B2").Value = Array("request_folder", "")
         worksheet.Range("A3:B3").Value = Array("parse_targets", "출발지IP;목적지IP")
         worksheet.Range("A4:B4").Value = Array("route_legacy_fallback", "FALSE")
+        worksheet.Range("A5:B5").Value = Array("header_alias", "")
     End If
 End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:U").AutoFit
+    worksheet.Columns("A:X").AutoFit
     worksheet.Rows(1).Font.Bold = True
-    worksheet.Range("A1:U1").AutoFilter
+    worksheet.Range("A1:X1").AutoFilter
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String

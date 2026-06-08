@@ -223,3 +223,53 @@ def test_parse_skips_blank_rows(tmp_path, engine):
     # only the one row with IP data is kept (row with empty src+dst IP skipped)
     assert len(parsed) == 1
     assert parsed[0]["source_ip"] == "10.10.10.5"
+
+
+# --------------------------------------------------------------------------- #
+# E2E #6: 비표준 헤더 + settings header_alias -> 파싱 -> 경로추적 (통합)
+# --------------------------------------------------------------------------- #
+
+def test_parse_with_user_aliases_then_route(tmp_path, engine):
+    from user_alias_oracle import parse_user_aliases
+
+    # settings header_alias: 비표준 헤더를 표준 컬럼으로 매핑
+    user_aliases = parse_user_aliases(
+        "출발지IP=출발지주소; 목적지IP=목적지주소; 출발지=출발지설명; "
+        "목적지=목적지설명; 용도=신청사유"
+    )
+    # 신청서: 표준 별칭으로는 안 잡히는 헤더(출발지주소/목적지주소 등)를
+    # settings header_alias 로 해석해야 파싱 성공.
+    rows = [
+        ["No", "출발지주소", "출발지설명", "목적지주소", "목적지설명",
+         "프로토콜", "포트", "방향", "신청사유", "시작일", "종료일", "비고"],
+        [1, "10.10.10.5", "PC", "10.20.20.5", "DMZ", "TCP", "443",
+         "OUT", "DMZ 연동", "2026-01-01", "2026-12-31", "비고"],
+    ]
+    p = _build_xlsx(tmp_path, "req6.xlsx", rows)
+    parsed = parse_request_sheet(
+        _sheet_rows(openpyxl.load_workbook(p).active),
+        user_aliases=user_aliases,
+    )
+    assert len(parsed) == 1
+    r = parsed[0]
+    assert r["source_ip"] == "10.10.10.5"
+    assert r["dest_ip"] == "10.20.20.5"
+    assert r["purpose"] == "DMZ 연동"
+    # 경로추적: internal -> transit -> dmz => 두 방화벽
+    res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+    assert res.status == "OK"
+    assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
+    assert res.zone_path == "internal>transit>dmz"
+
+
+def test_user_alias_missing_without_setting_raises(tmp_path):
+    # 사용자 별칭을 등록하지 않으면 비표준 헤더는 필수컬럼 누락으로 실패
+    rows = [
+        ["No", "출발지주소", "출발지설명", "목적지주소", "목적지설명",
+         "프로토콜", "포트", "방향", "신청사유", "시작일", "종료일", "비고"],
+        [1, "10.10.10.5", "PC", "10.20.20.5", "DMZ", "TCP", "443",
+         "OUT", "연동", "2026-01-01", "2026-12-31", ""],
+    ]
+    p = _build_xlsx(tmp_path, "req7.xlsx", rows)
+    with pytest.raises(RequestParseError):
+        parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
