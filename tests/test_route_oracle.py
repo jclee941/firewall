@@ -337,3 +337,45 @@ def test_scenario17_list_skips_unresolvable(engine):
     # 192.0.2.9 unresolved, 10.10.10.5 -> RED
     z = engine.resolve_zone("192.0.2.9;10.10.10.5")
     assert z == "RED"
+
+
+# --------------------------------------------------------------------------- #
+# Scenario 18: ambiguous zone (two equal-prefix networks, different zones)
+# --------------------------------------------------------------------------- #
+
+def test_scenario18_ambiguous_zone():
+    networks = [
+        Network("a", "10.10.0.0/16", "ZONE_A"),
+        Network("b", "10.10.0.0/16", "ZONE_B"),  # same prefix, different zone
+    ]
+    eng = RouteEngine(networks=networks, firewalls=[], routing_paths=[])
+    assert eng.resolve_zone("10.10.10.10") == "#AMBIGUOUS"
+    r = eng.analyze("10.10.10.10", "10.10.20.20", "OUT")
+    assert r.status == "ZONE_UNRESOLVED"
+    assert "unresolved" in r.validation_message.lower()
+
+
+# --------------------------------------------------------------------------- #
+# Scenario 19: BOTH (blank) resolves via the FORWARD path with no reverse note
+# --------------------------------------------------------------------------- #
+
+def test_scenario19_both_forward_success(engine):
+    r = engine.analyze("10.10.10.10", "10.20.20.20", "")  # blank => BOTH
+    assert r.status == "OK"
+    assert r.target_firewalls == "FW-A"
+    assert r.zone_path == "RED>GREEN"
+    assert "reverse direction under BOTH" not in r.validation_message
+
+
+# --------------------------------------------------------------------------- #
+# Scenario 20: IN direction succeeds by traversing destination -> source
+# --------------------------------------------------------------------------- #
+
+def test_scenario20_in_direction_success(engine):
+    # graph has RED->GREEN; an IN request (src=GREEN, dst=RED) analyzes dst->src
+    r = engine.analyze("10.20.20.20", "10.10.10.10", "IN")
+    assert r.status == "OK"
+    assert r.source_zone == "GREEN"
+    assert r.destination_zone == "RED"
+    assert r.target_firewalls == "FW-A"
+    assert r.zone_path == "RED>GREEN"

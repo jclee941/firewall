@@ -7,7 +7,8 @@
 - 신청 파일은 한 폴더에 모읍니다. 예: `incoming-requests/`
 - Excel VBA 매크로는 폴더 안의 `.xls`, `.xlsx`, `.xlsm` 파일을 읽습니다.
 - 임시 파일(`~$`로 시작하는 Excel 잠금 파일)은 무시합니다.
-- 각 행에는 `source_file`, `source_row`, `source_zone`, `destination_zone`, `zone_path`, `firewall_path`, `target_firewalls`, `validation_status`, `validation_message`, `match_details` 컬럼이 자동으로 추가됩니다.
+- 각 행에는 `source_file`, `source_row`, `target_firewalls`, `firewall_path`, `validation_status`, `validation_message`, `match_details`, `source_zone`, `destination_zone`, `zone_path`, `request_team`, `request_doc_no`, `request_folder` 컬럼이 자동으로 채워집니다. (`requests` 시트는 총 24개 컬럼입니다.)
+- `firewall_path`/`zone_path`는 hop을 `>`로 잇고(예: `FW-INTERNAL-01>FW-DMZ-01`, `INTERNAL>DMZ`), `target_firewalls`는 방화벽을 `;`로 잇습니다.
 - 결과는 매크로 통합 문서의 `requests` 시트에 저장됩니다.
 - 방화벽 매칭은 출발/도착 IP의 CIDR 겹침이 아니라 `network_definitions`의 zone과 `routing_paths`의 zone 그래프 BFS 최단경로로 결정합니다.
 
@@ -68,19 +69,19 @@
 | `network_cidr` | 예 | IP 또는 CIDR | 매칭 단위 CIDR 또는 단일 IP |
 | `zone` | 예 | 문자열 | 소속 zone |
 | `site` | 아니오 | 문자열 | 사이트/위치 (참고용) |
-| `enabled` | 예 | TRUE/FALSE | 사용 여부. FALSE면 매칭에서 제외 |
+| `enabled` | 예 | `Y`/`TRUE` 등 | 사용 여부. `Y`,`YES`,`TRUE`,`1`,빈값=사용; 그 외=제외 (시드는 `Y` 사용) |
 
 같은 zone을 여러 행에 나눠 등록해도 됩니다. zone 결정은 IP 단위가 아니라 CIDR 단위 longest-prefix match입니다. 신청서 값이 `10.10.0.0/16`이고 `network_definitions`에 `10.10.0.0/16`과 `10.10.0.0/15`가 둘 다 있으면 더 좁은 `10.10.0.0/16`이 이깁니다.
 
 ## firewalls 시트
 
-`cidr_list`는 더 이상 메인 매칭 기준이 아닙니다. 장비 식별과 라우팅 hop 표시에만 쓰입니다.
+방화벽 매칭은 `routing_paths`의 zone 그래프 경로로만 결정합니다. firewalls 시트는 장비 식별과 라우팅 hop 표시에만 쓰이며, CIDR 컬럼(`cidr_list`)은 더 이상 존재하지 않습니다. 2번째 컬럼은 `vendor`입니다.
 
 | 컬럼 | 필수 | 형식 | 설명 |
 |---|---:|---|---|
 | `firewall_name` | 예 | 문자열 | 방화벽 식별자. `routing_paths.firewall_name`과 같은 값 |
 | `vendor` | 아니오 | 문자열 | 제조사 (참고용) |
-| `enabled` | 예 | TRUE/FALSE | 사용 여부. FALSE면 라우팅 hop에서도 제외 |
+| `enabled` | 예 | `Y`/`TRUE` 등 | 사용 여부. FALSE면 라우팅 hop에서도 제외 (`Y`,`YES`,`TRUE`,`1`,빈값=사용) |
 | `comment` | 아니오 | 문자열 | 비고 |
 
 ## routing_paths 시트
@@ -93,7 +94,7 @@
 | `ingress_if` | 아니오 | 문자열 | 인바운드 인터페이스 |
 | `egress_if` | 아니오 | 문자열 | 아웃바운드 인터페이스 |
 | `path_order` | 예 | 숫자 | 동일 zone-쌍 우선순위. 작을수록 우선 |
-| `enabled` | 예 | TRUE/FALSE | 사용 여부. FALSE면 그래프에서 제외 |
+| `enabled` | 예 | `Y`/`TRUE` 등 | 사용 여부. FALSE면 그래프에서 제외 (`Y`,`YES`,`TRUE`,`1`,빈값=사용) |
 
 한 zone-쌍에 hop이 여럿이면 `path_order`로 우선순위를 정합니다. BFS는 `path_order` 오름차순으로 첫 번째 경로를 우선 경로로 봅니다. 같은 hop 수의 다른 경로가 있으면 `MULTI_PATH`로 표시하고 우선 경로의 hop 순서를 결과에 남깁니다.
 
@@ -103,7 +104,8 @@
 |---|---|---|---|
 | `request_folder` | 경로 | 신청서 폴더 | 비어 있음 (실행 시 폴더 선택창) |
 | `parse_targets` | 세미콜론 구분 컬럼명 | 파싱 대상 컬럼 | `출발지IP;목적지IP` |
-| `route_legacy_fallback` | TRUE/FALSE | 라우팅 실패 시 CIDR 겹침 폴백 사용 여부 | `FALSE` |
+| `route_legacy_fallback` | TRUE/FALSE | 라우팅 실패 시 CIDR 겹침 폴백 사용 여부. 운영 표준값은 항상 `FALSE` | `FALSE` |
+| `header_alias` | `정규헤더=별칭1,별칭2; ...` | 비표준 헤더를 표준 컬럼으로 매핑 (내장 별칭 우선, 못 잡은 것만 보완) | 비어 있음 |
 
 ## 검증 규칙
 

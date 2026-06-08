@@ -15,3 +15,10 @@ dist/*-starter.*
 
 # built artifact (non-deterministic timestamp); CI release.yml builds it from source
 dist/firewall-policy-automation.xlsm
+
+# release-time bundle artifacts (release.yml builds them from source)
+bundle/
+firewall-policy-automation-bundle.zip
+
+# editor/tooling local state
+.omo/

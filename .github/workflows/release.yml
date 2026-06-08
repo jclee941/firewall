@@ -63,6 +63,16 @@ jobs:
           print("artifact OK:", p)
           PY
 
+      - name: Scaffold request-folder and bundle
+        run: |
+          python scripts/make_request_folder.py
+          mkdir -p bundle
+          cp dist/firewall-policy-automation.xlsm bundle/
+          cp -r request-folder bundle/
+          cp dist/README.txt bundle/ 2>/dev/null || true
+          (cd bundle && zip -r ../firewall-policy-automation-bundle.zip .)
+          test -f firewall-policy-automation-bundle.zip
+
       - name: Resolve tag
         id: tag
         run: |
@@ -89,7 +99,7 @@ jobs:
           2. `firewalls` : 방화벽 장비 목록
           3. `routing_paths` : zone 간 라우팅 경로
           4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_targets), 헤더 별칭(header_alias)
-          5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8)
+          5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8). `request-folder/`(번들 zip)를 그대로 쓰거나 복사해서 사용하세요.
           6. 경로만 재분석: `AnalyzeRequestRoutes`
 
           ## 주요 기능
@@ -100,13 +110,18 @@ jobs:
           - 사용자 정의 헤더 별칭 (settings header_alias)
           - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
 
-          이 릴리즈의 .xlsm은 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
+          첨부물: `firewall-policy-automation.xlsm`(단일 파일) + `firewall-policy-automation-bundle.zip`(xlsm + request-folder 폴더 구조 동봉).
+          이 릴리즈는 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
           EOF
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/firewall-policy-automation.xlsm \
+            gh release upload "$TAG" \
+              dist/firewall-policy-automation.xlsm \
+              firewall-policy-automation-bundle.zip \
               --repo "${{ github.repository }}" --clobber
           else
-            gh release create "$TAG" dist/firewall-policy-automation.xlsm \
+            gh release create "$TAG" \
+              dist/firewall-policy-automation.xlsm \
+              firewall-policy-automation-bundle.zip \
               --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
               --title "$TAG — Firewall Route Analysis (적용대상방화벽 경로 분석)" \

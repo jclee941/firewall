@@ -88,8 +88,6 @@ Public Sub MergeFirewallRequestFolder()
     logSheet.Rows("2:" & logSheet.Rows.Count).ClearContents
     nextRow = 2
     mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, logSheet, nextRow)
-    MarkDuplicateRequests requestsSheet
-    MarkUnmatchedFirewalls requestsSheet
     FormatRequestsSheet requestsSheet
     FormatLogSheet logSheet
 
@@ -102,6 +100,10 @@ RouteFailed:
     MsgBox "라우트 분석 중 오류가 발생했습니다: " & Err.Description, vbExclamation
     On Error GoTo 0
 RouteDone:
+    ' Append duplicate-candidate markers AFTER route analysis owns validation_*,
+    ' so AppendValidationMessage merges onto the route status instead of being
+    ' overwritten by WriteResultRow.
+    MarkDuplicateRequests requestsSheet
 
     MsgBox CStr(mergedCount) & "건의 신청서를 통합했습니다.", vbInformation
 End Sub
@@ -280,7 +282,6 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     requestsSheet.Cells(targetRow, COL_START_DATE).Value = FormatMetadataDate(ReadDataCell(sourceSheet, sourceRow, headerMap("시작일")))
     requestsSheet.Cells(targetRow, COL_END_DATE).Value = FormatMetadataDate(ReadDataCell(sourceSheet, sourceRow, headerMap("종료일")))
     requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("비고"))))
-    requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls(firewallsSheet, requestsSheet, targetRow)
     Dim reqTeam As String, reqDocNo As String
     ParseRequestFolderName folderName, reqTeam, reqDocNo
     requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
@@ -288,231 +289,6 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
     WriteRowValidation requestsSheet, targetRow
 End Sub
-
-Private Function ResolveTargetFirewalls(ByVal firewallsSheet As Worksheet, ByVal requestsSheet As Worksheet, ByVal requestRow As Long) As String
-    Dim lastRow As Long
-    Dim rowIndex As Long
-    Dim firewallName As String
-    Dim cidrText As String
-    Dim matched As Object
-    Dim matchDetails As Object
-    Dim detailText As String
-
-    Set matched = CreateObject("Scripting.Dictionary")
-    Set matchDetails = CreateObject("Scripting.Dictionary")
-    lastRow = firewallsSheet.Cells(firewallsSheet.Rows.Count, 1).End(xlUp).Row
-
-    For rowIndex = 2 To lastRow
-        firewallName = Trim$(CStr(firewallsSheet.Cells(rowIndex, 1).Value))
-        cidrText = Trim$(CStr(firewallsSheet.Cells(rowIndex, 2).Value))
-        If Len(firewallName) > 0 And Len(cidrText) > 0 Then
-            detailText = RequestRowMatchDetails(requestsSheet, requestRow, cidrText)
-            If Len(detailText) > 0 Then
-                If Not matched.Exists(firewallName) Then matched.Add firewallName, firewallName
-                If Not matchDetails.Exists(firewallName) Then matchDetails.Add firewallName, firewallName & "=" & detailText
-            End If
-        End If
-    Next rowIndex
-
-    ResolveTargetFirewalls = JoinDictionaryKeys(matched)
-    requestsSheet.Cells(requestRow, COL_MATCH_DETAILS).Value = JoinDictionaryValues(matchDetails)
-End Function
-
-Private Function RequestRowMatchDetails(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal cidrText As String) As String
-    Dim parseColumns As Variant
-    Dim index As Long
-    Dim columnNumber As Long
-    Dim detailText As String
-    Dim resultText As String
-
-    parseColumns = RegisteredParseTargetColumns()
-    For index = LBound(parseColumns) To UBound(parseColumns)
-        columnNumber = CLng(parseColumns(index))
-        detailText = AddressListMatchDetails(Trim$(CStr(requestsSheet.Cells(requestRow, columnNumber).Value)), cidrText)
-        If Len(detailText) > 0 Then
-            If Len(resultText) > 0 Then resultText = resultText & "; "
-            resultText = resultText & requestsSheet.Cells(1, columnNumber).Value & ":" & detailText
-        End If
-    Next index
-    RequestRowMatchDetails = resultText
-End Function
-
-Private Function RequestRowMatchesCidr(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal cidrText As String) As Boolean
-    Dim parseColumns As Variant
-    Dim index As Long
-    Dim columnNumber As Long
-
-    parseColumns = RegisteredParseTargetColumns()
-    For index = LBound(parseColumns) To UBound(parseColumns)
-        columnNumber = CLng(parseColumns(index))
-        If AddressListMatchesCidr(Trim$(CStr(requestsSheet.Cells(requestRow, columnNumber).Value)), cidrText) Then
-            RequestRowMatchesCidr = True
-            Exit Function
-        End If
-    Next index
-End Function
-
-Private Function RegisteredParseTargetColumns() As Variant
-    Dim settingsSheet As Worksheet
-    Dim targetText As String
-
-    Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
-    targetText = Trim$(CStr(settingsSheet.Range("B3").Value))
-    If Len(targetText) = 0 Then targetText = "출발지IP;목적지IP"
-    RegisteredParseTargetColumns = ParseTargetColumnsFromText(targetText)
-End Function
-
-Private Function ParseTargetColumnsFromText(ByVal targetText As String) As Variant
-    Dim names() As String
-    Dim columns() As Long
-    Dim index As Long
-
-    names = Split(targetText, ";")
-    ReDim columns(LBound(names) To UBound(names))
-    For index = LBound(names) To UBound(names)
-        columns(index) = RequestColumnNumber(Trim$(LCase$(names(index))))
-    Next index
-    ParseTargetColumnsFromText = columns
-End Function
-
-Private Function RequestColumnNumber(ByVal columnName As String) As Long
-    Select Case columnName
-        Case "출발지ip": RequestColumnNumber = COL_SOURCE_IP
-        Case "출발지": RequestColumnNumber = COL_SOURCE_NAME
-        Case "목적지ip": RequestColumnNumber = COL_DESTINATION_IP
-        Case "목적지": RequestColumnNumber = COL_DESTINATION_NAME
-        Case "프로토콜": RequestColumnNumber = COL_PROTOCOL
-        Case "포트": RequestColumnNumber = COL_PORT
-        Case "방향": RequestColumnNumber = COL_DIRECTION
-        Case "용도": RequestColumnNumber = COL_PURPOSE
-        Case "시작일": RequestColumnNumber = COL_START_DATE
-        Case "종료일": RequestColumnNumber = COL_END_DATE
-        Case "비고": RequestColumnNumber = COL_NOTE
-        Case Else: Err.Raise vbObjectError + 1002, , "등록되지 않은 파싱 대상 컬럼: " & columnName
-    End Select
-End Function
-
-Private Function AddressListMatchesCidr(ByVal addressList As String, ByVal cidrList As String) As Boolean
-    Dim addresses() As String
-    Dim cidrs() As String
-    Dim addressIndex As Long
-    Dim cidrIndex As Long
-
-    addresses = SplitAddressList(addressList)
-    cidrs = SplitAddressList(cidrList)
-    For addressIndex = LBound(addresses) To UBound(addresses)
-        For cidrIndex = LBound(cidrs) To UBound(cidrs)
-            If NetworkRangesOverlap(Trim$(addresses(addressIndex)), Trim$(cidrs(cidrIndex))) Then
-                AddressListMatchesCidr = True
-                Exit Function
-            End If
-        Next cidrIndex
-    Next addressIndex
-End Function
-
-Private Function AddressListMatchDetails(ByVal addressList As String, ByVal cidrList As String) As String
-    Dim addresses() As String
-    Dim cidrs() As String
-    Dim addressIndex As Long
-    Dim cidrIndex As Long
-    Dim addressText As String
-    Dim cidrText As String
-
-    addresses = SplitAddressList(addressList)
-    cidrs = SplitAddressList(cidrList)
-    For addressIndex = LBound(addresses) To UBound(addresses)
-        addressText = Trim$(addresses(addressIndex))
-        For cidrIndex = LBound(cidrs) To UBound(cidrs)
-            cidrText = Trim$(cidrs(cidrIndex))
-            If NetworkRangesOverlap(addressText, cidrText) Then
-                AddressListMatchDetails = addressText & "<>" & cidrText
-                Exit Function
-            End If
-        Next cidrIndex
-    Next addressIndex
-End Function
-
-Private Function SplitAddressList(ByVal addressList As String) As String()
-    Dim normalized As String
-
-    normalized = Replace(addressList, ChrW(160), " ")
-    normalized = Replace(normalized, vbTab, " ")
-    normalized = Replace(normalized, vbCrLf, ";")
-    normalized = Replace(normalized, vbCr, ";")
-    normalized = Replace(normalized, vbLf, ";")
-    normalized = Replace(normalized, ",", ";")
-    normalized = Replace(normalized, "，", ";")
-    normalized = Replace(normalized, "；", ";")
-    SplitAddressList = Split(normalized, ";")
-End Function
-
-Private Function NetworkRangesOverlap(ByVal leftCidr As String, ByVal rightCidr As String) As Boolean
-    Dim leftStart As Double
-    Dim leftEnd As Double
-    Dim rightStart As Double
-    Dim rightEnd As Double
-
-    On Error GoTo NotMatched
-    If Len(leftCidr) = 0 Or Len(rightCidr) = 0 Then Exit Function
-    leftStart = CidrStart(leftCidr)
-    leftEnd = CidrEnd(leftCidr)
-    rightStart = CidrStart(rightCidr)
-    rightEnd = CidrEnd(rightCidr)
-    NetworkRangesOverlap = leftStart <= rightEnd And rightStart <= leftEnd
-    Exit Function
-
-NotMatched:
-    NetworkRangesOverlap = False
-End Function
-
-Private Function CidrStart(ByVal cidrText As String) As Double
-    Dim baseValue As Double
-    Dim blockSize As Double
-
-    baseValue = IpToNumber(CidrBaseIp(cidrText))
-    blockSize = CidrBlockSize(cidrText)
-    CidrStart = Fix(baseValue / blockSize) * blockSize
-End Function
-
-Private Function CidrEnd(ByVal cidrText As String) As Double
-    CidrEnd = CidrStart(cidrText) + CidrBlockSize(cidrText) - 1
-End Function
-
-Private Function CidrBaseIp(ByVal cidrText As String) As String
-    CidrBaseIp = Trim$(Split(cidrText, "/")(0))
-End Function
-
-Private Function CidrPrefixLength(ByVal cidrText As String) As Long
-    Dim cidrParts() As String
-
-    cidrParts = Split(cidrText, "/")
-    If UBound(cidrParts) = 0 Then
-        CidrPrefixLength = 32
-    Else
-        CidrPrefixLength = CLng(Trim$(cidrParts(1)))
-    End If
-    If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise vbObjectError + 1004, , "Invalid CIDR prefix: " & cidrText
-End Function
-
-Private Function CidrBlockSize(ByVal cidrText As String) As Double
-    CidrBlockSize = 2 ^ (32 - CidrPrefixLength(cidrText))
-End Function
-
-Private Function IpToNumber(ByVal ipText As String) As Double
-    Dim parts() As String
-
-    Dim index As Long
-    Dim octet As Long
-
-    parts = Split(Trim$(ipText), ".")
-    If UBound(parts) <> 3 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
-    For index = 0 To 3
-        If Len(Trim$(parts(index))) = 0 Or Not IsNumeric(Trim$(parts(index))) Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
-        octet = CLng(Trim$(parts(index)))
-        If octet < 0 Or octet > 255 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
-    Next index
-    IpToNumber = CDbl(Trim$(parts(0))) * 16777216# + CDbl(Trim$(parts(1))) * 65536# + CDbl(Trim$(parts(2))) * 256# + CDbl(Trim$(parts(3)))
-End Function
 
 Private Function FindHeaderRow(ByVal worksheet As Worksheet) As Long
     Dim rowIndex As Long
@@ -756,28 +532,6 @@ Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
     worksheet.Range("A1:E1").AutoFilter
 End Sub
 
-Private Function JoinDictionaryValues(ByVal dictionary As Object) As String
-    Dim value As Variant
-    Dim result As String
-
-    For Each value In dictionary.Items
-        If Len(result) > 0 Then result = result & "; "
-        result = result & CStr(value)
-    Next value
-    JoinDictionaryValues = result
-End Function
-
-Private Function JoinDictionaryKeys(ByVal dictionary As Object) As String
-    Dim key As Variant
-    Dim result As String
-
-    For Each key In dictionary.Keys
-        If Len(result) > 0 Then result = result & ";"
-        result = result & CStr(key)
-    Next key
-    JoinDictionaryKeys = result
-End Function
-
 Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
     Dim seen As Object
     Dim lastRow As Long
@@ -790,8 +544,8 @@ Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
         duplicateKey = RequestDuplicateKey(worksheet, rowIndex)
         If Len(duplicateKey) > 0 Then
             If seen.Exists(duplicateKey) Then
-                worksheet.Rows(rowIndex).Interior.Color = RGB(255, 230, 153)
-                worksheet.Rows(CLng(seen(duplicateKey))).Interior.Color = RGB(255, 230, 153)
+                HighlightDuplicateRow worksheet, rowIndex
+                HighlightDuplicateRow worksheet, CLng(seen(duplicateKey))
                 AppendValidationMessage worksheet, rowIndex, "DUPLICATE", "중복 후보: " & CStr(seen(duplicateKey)) & "행"
                 AppendValidationMessage worksheet, CLng(seen(duplicateKey)), "DUPLICATE", "중복 후보: " & CStr(rowIndex) & "행"
             Else
@@ -799,6 +553,16 @@ Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
             End If
         End If
     Next rowIndex
+End Sub
+
+Private Sub HighlightDuplicateRow(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
+    ' Highlight the duplicate row WITHOUT clobbering the route-owned
+    ' validation_status cell color (column 15), which AnalyzeRequestRoutes set
+    ' to encode OK/MULTI_PATH/severity. Save and restore that one cell's color.
+    Dim statusColor As Variant
+    statusColor = worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Interior.Color
+    worksheet.Rows(rowIndex).Interior.Color = RGB(255, 230, 153)
+    worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Interior.Color = statusColor
 End Sub
 
 Private Function RequestDuplicateKey(ByVal worksheet As Worksheet, ByVal rowIndex As Long) As String
@@ -809,20 +573,6 @@ Private Function RequestDuplicateKey(ByVal worksheet As Worksheet, ByVal rowInde
         Trim$(CStr(worksheet.Cells(rowIndex, COL_DIRECTION).Value)) & "|" & _
         Trim$(CStr(worksheet.Cells(rowIndex, COL_PURPOSE).Value))
 End Function
-
-Private Sub MarkUnmatchedFirewalls(ByVal worksheet As Worksheet)
-    Dim lastRow As Long
-    Dim rowIndex As Long
-
-    lastRow = worksheet.Cells(worksheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
-    For rowIndex = 2 To lastRow
-        If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Value))) = 0 Then
-            worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Value = "UNMATCHED"
-            worksheet.Cells(rowIndex, COL_TARGET_FIREWALLS).Interior.Color = RGB(255, 199, 206)
-            AppendValidationMessage worksheet, rowIndex, "UNMATCHED", "적용 대상 방화벽 없음"
-        End If
-    Next rowIndex
-End Sub
 
 Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
     On Error Resume Next
@@ -850,11 +600,11 @@ End Sub
 
 Private Sub WriteSettings(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:B1").Value = Array("key", "value")
-        worksheet.Range("A2:B2").Value = Array("request_folder", "")
-        worksheet.Range("A3:B3").Value = Array("parse_targets", "출발지IP;목적지IP")
-        worksheet.Range("A4:B4").Value = Array("route_legacy_fallback", "FALSE")
-        worksheet.Range("A5:B5").Value = Array("header_alias", "")
+        worksheet.Range("A1:C1").Value = Array("key", "value", "설명")
+        worksheet.Range("A2:C2").Value = Array("request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다.")
+        worksheet.Range("A3:C3").Value = Array("parse_targets", "출발지IP;목적지IP", "적용대상방화벽 산정에 쓸 IP 컬럼(세미콜론 구분). IP 컬럼만 등록.")
+        worksheet.Range("A4:C4").Value = Array("route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE).")
+        worksheet.Range("A5:C5").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
     End If
 End Sub
 

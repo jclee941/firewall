@@ -1,12 +1,12 @@
 """Pure-Python mirror of the VBA request-sheet parsing logic.
 
 Mirrors, line-for-line in behavior:
-  - HeaderKey                 (FirewallPolicyAutomation.bas:686)  lower + strip spaces
-  - CanonicalHeaderName       (FirewallPolicyAutomation.bas:475)  alias map
-  - FindHeaderRow             (FirewallPolicyAutomation.bas:440)  scan rows 1..30 for no/번호
-  - BuildHeaderMap            (FirewallPolicyAutomation.bas:460)  canonical name -> column index
-  - ValidateRequiredHeaders   (FirewallPolicyAutomation.bas:493)  11 required headers
-  - CopyRequestRow extraction (FirewallPolicyAutomation.bas:197)  per-column value pull
+  - HeaderKey                 (FirewallPolicyAutomation.bas)  lower + strip spaces
+  - CanonicalHeaderName       (FirewallPolicyAutomation.bas)  alias map
+  - FindHeaderRow             (FirewallPolicyAutomation.bas)  scan rows 1..30 for no/번호
+  - BuildHeaderMap            (FirewallPolicyAutomation.bas)  canonical name -> column index
+  - ValidateRequiredHeaders   (FirewallPolicyAutomation.bas)  11 required headers
+  - CopyRequestRow extraction (FirewallPolicyAutomation.bas)  per-column value pull
 
 This lets us verify, without Excel, that an arbitrary 신청서 layout
 (varied column order, alias headers, header not on row 1, B-column No)
