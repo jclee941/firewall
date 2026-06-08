@@ -8,3 +8,7 @@ merged-requests.*
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# legacy/untracked build artifacts
+dist/*.ps1
+dist/firewall-policy-automation-starter.*
