@@ -188,21 +188,34 @@ def test_parse_cidr_and_list(tmp_path, engine):
 
 
 # --------------------------------------------------------------------------- #
-# E2E #4: missing required column raises (matches ValidateRequiredHeaders)
+# E2E #4: optional columns may be omitted; only the IP columns are required
 # --------------------------------------------------------------------------- #
 
-def test_parse_missing_required_column(tmp_path):
+def test_parse_optional_columns_omitted_ok(tmp_path):
+    # 비고/용도/날짜 등 omitted -> still parses (those are optional metadata)
     rows = [
-        # 비고 column omitted
-        ["No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
-         "방향", "용도", "시작일", "종료일"],
-        [1, "10.10.10.5", "PC", "172.16.1.10", "서버", "TCP", "443",
-         "OUT", "업무", "2026-01-01", "2026-12-31"],
+        ["No", "\ucd9c\ubc1c\uc9c0IP", "\ubaa9\uc801\uc9c0IP", "\ud3ec\ud2b8"],
+        [1, "10.10.10.5", "172.16.1.10", "443"],
     ]
-    p = _build_xlsx(tmp_path, "req4.xlsx", rows)
+    p = _build_xlsx(tmp_path, "req4a.xlsx", rows)
+    parsed = parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
+    assert len(parsed) == 1
+    assert parsed[0]["source_ip"] == "10.10.10.5"
+    assert parsed[0]["dest_ip"] == "172.16.1.10"
+    assert parsed[0]["note"] == ""      # absent optional column -> blank
+    assert parsed[0]["purpose"] == ""
+
+
+def test_parse_missing_ip_column_raises(tmp_path):
+    # omitting a truly-required IP column still raises
+    rows = [
+        ["No", "\ucd9c\ubc1c\uc9c0IP", "\ud504\ub85c\ud1a0\ucf5c", "\ud3ec\ud2b8"],   # \ubaa9\uc801\uc9c0IP omitted
+        [1, "10.10.10.5", "TCP", "443"],
+    ]
+    p = _build_xlsx(tmp_path, "req4b.xlsx", rows)
     with pytest.raises(RequestParseError) as exc:
         parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
-    assert "비고" in str(exc.value)
+    assert "\ubaa9\uc801\uc9c0ip" in str(exc.value)
 
 
 # --------------------------------------------------------------------------- #

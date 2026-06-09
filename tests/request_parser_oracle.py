@@ -86,8 +86,10 @@ def canonical_header_name(key: str) -> str:
 # Sheet model: a sheet is a list[list[cell]] (1-based logic, 0-based storage)
 # --------------------------------------------------------------------------- #
 
-REQUIRED = ["출발지ip", "출발지", "목적지ip", "목적지", "프로토콜", "포트",
-            "방향", "용도", "시작일", "종료일", "비고"]
+# Only the IP columns are truly required (the route analysis needs them). All
+# other columns are optional metadata: read if present, blank if absent. This
+# lets request forms that omit 비고/용도/날짜 etc. still merge.
+REQUIRED = ["출발지ip", "목적지ip"]
 
 
 class RequestParseError(Exception):
@@ -142,6 +144,14 @@ def _cell(rows: list[list], r1: int, c1: int):
         return ""
     v = row[c1 - 1]
     return "" if v is None else v
+
+
+def _opt(rows: list[list], r1: int, hmap: dict, name: str):
+    """Read an OPTIONAL column by canonical name: '' if the column is absent."""
+    col = hmap.get(name)
+    if not col:
+        return ""
+    return _cell(rows, r1, col)
 
 
 def _last_column(rows: list[list], r1: int) -> int:
@@ -225,16 +235,16 @@ def parse_request_sheet(rows: list[list],
             continue
         out.append({
             "source_row": r1,
-            "source_ip": str(_cell(rows, r1, hmap["출발지ip"])).strip(),
-            "source_name": str(_cell(rows, r1, hmap["출발지"])).strip(),
-            "dest_ip": str(_cell(rows, r1, hmap["목적지ip"])).strip(),
-            "dest_name": str(_cell(rows, r1, hmap["목적지"])).strip(),
-            "protocol": str(_cell(rows, r1, hmap["프로토콜"])).strip().upper(),
-            "port": str(_cell(rows, r1, hmap["포트"])).strip(),
-            "direction": str(_cell(rows, r1, hmap["방향"])).strip(),
-            "purpose": str(_cell(rows, r1, hmap["용도"])).strip(),
-            "start_date": _format_metadata_date(_cell(rows, r1, hmap["시작일"])),
-            "end_date": _format_metadata_date(_cell(rows, r1, hmap["종료일"])),
-            "note": str(_cell(rows, r1, hmap["비고"])).strip(),
+            "source_ip": str(_opt(rows, r1, hmap, "출발지ip")).strip(),
+            "source_name": str(_opt(rows, r1, hmap, "출발지")).strip(),
+            "dest_ip": str(_opt(rows, r1, hmap, "목적지ip")).strip(),
+            "dest_name": str(_opt(rows, r1, hmap, "목적지")).strip(),
+            "protocol": str(_opt(rows, r1, hmap, "프로토콜")).strip().upper(),
+            "port": str(_opt(rows, r1, hmap, "포트")).strip(),
+            "direction": str(_opt(rows, r1, hmap, "방향")).strip(),
+            "purpose": str(_opt(rows, r1, hmap, "용도")).strip(),
+            "start_date": _format_metadata_date(_opt(rows, r1, hmap, "시작일")),
+            "end_date": _format_metadata_date(_opt(rows, r1, hmap, "종료일")),
+            "note": str(_opt(rows, r1, hmap, "비고")).strip(),
         })
     return out
