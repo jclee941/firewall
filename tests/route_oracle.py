@@ -106,6 +106,18 @@ def split_address_list(text: str) -> list[str]:
 # Data model
 # --------------------------------------------------------------------------- #
 
+def _zone_display(zone: str) -> str:
+    """DISPLAY-ONLY zone label for the requests sheet. Never used in the graph,
+    cache key, tie-break or status logic. Strips the internal 'cidr:' prefix and
+    shows the 0.0.0.0/0 catch-all as '\uc678\ubd80'. Explicit operator zones
+    (internal/dmz/RED...) have no 'cidr:' prefix and pass through unchanged."""
+    if zone == "cidr:0.0.0.0/0" or zone == "0.0.0.0/0":
+        return "\uc678\ubd80"
+    if zone.startswith("cidr:"):
+        return zone[5:]
+    return zone
+
+
 def _canon_zone(cidr: str) -> str:
     """Canonical zone label for a CIDR/IP side of a firewall.
 
@@ -347,7 +359,7 @@ class RouteEngine:
         if not paths:
             res.status = "NO_PATH"
             res.validation_message = "No routing path found"
-            res.match_details = f"from={start_zone}; to={end_zone}"
+            res.match_details = f"from={_zone_display(start_zone)}; to={_zone_display(end_zone)}"
         else:
             best = self._choose_best(paths)
             res.firewall_path = self._build_fw_path(best)
@@ -382,7 +394,7 @@ class RouteEngine:
     @staticmethod
     def _build_zone_path(start_zone: str, edges: list[RoutingPath]) -> str:
         zones = [start_zone] + [e.dst_zone for e in edges]
-        return ">".join(zones)
+        return ">".join(_zone_display(z) for z in zones)
 
     @staticmethod
     def _build_match_details(start_zone: str, edges: list[RoutingPath]) -> str:
@@ -390,8 +402,7 @@ class RouteEngine:
         cur = start_zone
         for e in edges:
             parts.append(
-                f"{cur} -> {e.dst_zone} via {e.firewall_name}"
-                f"(order={int(e.path_order)},in={e.ingress_if},out={e.egress_if})"
+                f"{_zone_display(cur)} -> {_zone_display(e.dst_zone)} ({e.firewall_name})"
             )
             cur = e.dst_zone
         return "; ".join(parts)
@@ -457,8 +468,8 @@ class RouteEngine:
                 msg.append(f"Destination zone unresolved ({dst_ip})")
             return RouteResult(
                 status="ZONE_UNRESOLVED",
-                source_zone="" if src_zone.startswith("#") else src_zone,
-                destination_zone="" if dst_zone.startswith("#") else dst_zone,
+                source_zone="" if src_zone.startswith("#") else _zone_display(src_zone),
+                destination_zone="" if dst_zone.startswith("#") else _zone_display(dst_zone),
                 validation_message="; ".join(msg),
                 match_details=f"source_ip={src_ip}; destination_ip={dst_ip}",
             )
@@ -466,10 +477,10 @@ class RouteEngine:
         if src_zone == dst_zone:
             return RouteResult(
                 status="INTRA_ZONE",
-                source_zone=src_zone,
-                destination_zone=dst_zone,
+                source_zone=_zone_display(src_zone),
+                destination_zone=_zone_display(dst_zone),
                 validation_message="Source and destination in same zone; no firewall path required",
-                match_details=f"source_zone={src_zone}; destination_zone={dst_zone}",
+                match_details=f"source_zone={_zone_display(src_zone)}; destination_zone={_zone_display(dst_zone)}",
             )
 
         if d == "OUT":
@@ -511,8 +522,8 @@ class RouteEngine:
             if fb.status == "LEGACY_FALLBACK":
                 res = fb
 
-        res.source_zone = src_zone
-        res.destination_zone = dst_zone
+        res.source_zone = _zone_display(src_zone)
+        res.destination_zone = _zone_display(dst_zone)
         return res
 
     @staticmethod

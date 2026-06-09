@@ -608,7 +608,7 @@ Private Function DirectedResolve(ByVal startZone As String, ByVal endZone As Str
     If paths.Count = 0 Then
         res("status") = "NO_PATH"
         res("validation_message") = "No routing path found"
-        res("match_details") = "from=" & startZone & "; to=" & endZone
+        res("match_details") = "from=" & ZoneDisplay(startZone) & "; to=" & ZoneDisplay(endZone)
     Else
         Dim best As Collection
         Set best = ChooseBest(paths)
@@ -657,9 +657,9 @@ End Function
 
 Private Function BuildZonePath(ByVal startZone As String, ByVal edges As Collection) As String
     Dim s As String, i As Long
-    s = startZone
+    s = ZoneDisplay(startZone)
     For i = 1 To edges.Count
-        s = s & ">" & edges(i)("dst_zone")
+        s = s & ">" & ZoneDisplay(edges(i)("dst_zone"))
     Next i
     BuildZonePath = s
 End Function
@@ -671,11 +671,23 @@ Private Function BuildMatchDetails(ByVal startZone As String, ByVal edges As Col
         If i > 1 Then s = s & "; "
         Dim e As Object
         Set e = edges(i)
-        s = s & cur & " -> " & e("dst_zone") & " via " & e("firewall_name") & _
-            "(order=" & CLng(e("path_order")) & ",in=" & e("ingress_if") & ",out=" & e("egress_if") & ")"
+        s = s & ZoneDisplay(cur) & " -> " & ZoneDisplay(e("dst_zone")) & _
+            " (" & e("firewall_name") & ")"
         cur = e("dst_zone")
     Next i
     BuildMatchDetails = s
+End Function
+
+' DISPLAY-ONLY zone label (mirror of tests/route_oracle.py _zone_display).
+' Never used in graph/cache/tie-break/status; only when building output strings.
+Private Function ZoneDisplay(ByVal zone As String) As String
+    If zone = "cidr:0.0.0.0/0" Or zone = "0.0.0.0/0" Then
+        ZoneDisplay = "외부"
+    ElseIf Left$(zone, 5) = "cidr:" Then
+        ZoneDisplay = Mid$(zone, 6)
+    Else
+        ZoneDisplay = zone
+    End If
 End Function
 
 ' ===================================================================== '
@@ -767,8 +779,8 @@ Public Function AnalyzeRoute(ByVal srcIp As String, ByVal dstIp As String, ByVal
         End If
         res("validation_message") = msg
         res("match_details") = "source_ip=" & srcIp & "; destination_ip=" & dstIp
-        If Left$(srcZone, 1) <> "#" Then res("source_zone") = srcZone
-        If Left$(dstZone, 1) <> "#" Then res("destination_zone") = dstZone
+        If Left$(srcZone, 1) <> "#" Then res("source_zone") = ZoneDisplay(srcZone)
+        If Left$(dstZone, 1) <> "#" Then res("destination_zone") = ZoneDisplay(dstZone)
         Set AnalyzeRoute = res
         Exit Function
     End If
@@ -776,10 +788,10 @@ Public Function AnalyzeRoute(ByVal srcIp As String, ByVal dstIp As String, ByVal
     If srcZone = dstZone Then
         Set res = NewResult()
         res("status") = "INTRA_ZONE"
-        res("source_zone") = srcZone
-        res("destination_zone") = dstZone
+        res("source_zone") = ZoneDisplay(srcZone)
+        res("destination_zone") = ZoneDisplay(dstZone)
         res("validation_message") = "Source and destination in same zone; no firewall path required"
-        res("match_details") = "source_zone=" & srcZone & "; destination_zone=" & dstZone
+        res("match_details") = "source_zone=" & ZoneDisplay(srcZone) & "; destination_zone=" & ZoneDisplay(dstZone)
         Set AnalyzeRoute = res
         Exit Function
     End If
@@ -835,8 +847,8 @@ Public Function AnalyzeRoute(ByVal srcIp As String, ByVal dstIp As String, ByVal
         If fb("status") = "LEGACY_FALLBACK" Then Set res = fb
     End If
 
-    res("source_zone") = srcZone
-    res("destination_zone") = dstZone
+    res("source_zone") = ZoneDisplay(srcZone)
+    res("destination_zone") = ZoneDisplay(dstZone)
     Set AnalyzeRoute = res
 End Function
 

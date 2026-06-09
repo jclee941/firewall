@@ -398,7 +398,7 @@ def test_scenario21_auto_single_hop():
     r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
     assert r.status == "OK"
     assert r.target_firewalls == "FW-1"
-    assert r.zone_path == "cidr:10.10.0.0/16>cidr:172.16.0.0/16"
+    assert r.zone_path == "10.10.0.0/16>172.16.0.0/16"
 
 
 def test_scenario22_auto_multi_hop_shared_transit():
@@ -433,7 +433,7 @@ def test_scenario24_auto_cidr_canonicalized():
     r = eng.analyze("10.10.99.1", "172.16.1.10", "OUT")
     assert r.status == "OK"
     assert r.target_firewalls == "FW-1"
-    assert r.zone_path.startswith("cidr:10.10.0.0/16>")
+    assert r.zone_path.startswith("10.10.0.0/16>")
 
 
 def test_scenario25_auto_one_side_only_no_path():
