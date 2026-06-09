@@ -99,6 +99,10 @@ def split_address_list(text: str) -> list[str]:
         .replace("\uff0c", ";")
         .replace("\uff1b", ";")
     )
+    # runs of ASCII spaces between tokens are also a separator (mirror the
+    # request-field _norm_list): CIDR/IP tokens never contain spaces, so
+    # 'a b' -> 'a;b'. Empty tokens from repeated separators are dropped below.
+    norm = norm.replace(" ", ";")
     return [p.strip() for p in norm.split(";") if p.strip()]
 
 

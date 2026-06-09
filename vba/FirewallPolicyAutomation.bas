@@ -290,24 +290,64 @@ Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Lo
     WriteRowValidation requestsSheet, targetRow
 End Sub
 
+' True if a canonical name is a recognized FIELD header (everything but 'no').
+Private Function IsFieldHeader(ByVal canon As String) As Boolean
+    Select Case canon
+        Case "출발지ip", "출발지", "목적지ip", "목적지", "프로토콜", _
+             "포트", "방향", "용도", "시작일", "종료일", "비고"
+            IsFieldHeader = True
+    End Select
+End Function
+
+' Locate the header row by HEADER CONTENT (not by requiring a 'No' cell). Picks
+' the row with the most recognized field headers, requiring an IP column, with a
+' 'No' cell only as a tie-breaker. Mirrors tests/request_parser_oracle.py.
 Private Function FindHeaderRow(ByVal worksheet As Worksheet) As Long
-    Dim rowIndex As Long
-    Dim columnIndex As Long
-    Dim lastColumn As Long
-    Dim valueText As String
+    Dim rowIndex As Long, columnIndex As Long, lastColumn As Long
+    Dim key As String, canon As String
+    Dim bestRow As Long, bestCount As Long, bestHasNo As Long
+    bestRow = 0: bestCount = -1: bestHasNo = -1
 
     For rowIndex = 1 To 30
         lastColumn = worksheet.Cells(rowIndex, worksheet.Columns.Count).End(xlToLeft).Column
+        Dim seen As Object
+        Set seen = CreateObject("Scripting.Dictionary")
+        Dim hasNo As Boolean, hasIp As Boolean
+        hasNo = False: hasIp = False
         For columnIndex = 1 To lastColumn
-            valueText = HeaderKey(CStr(worksheet.Cells(rowIndex, columnIndex).Value))
-            If valueText = "no" Or valueText = "번호" Then
-                FindHeaderRow = rowIndex
-                Exit Function
+            key = HeaderKey(CStr(worksheet.Cells(rowIndex, columnIndex).Value))
+            If Len(key) > 0 Then
+                canon = CanonicalHeaderName(key)
+                If canon = key Then canon = UserAliasCanonical(key)
+                If canon = "no" Then
+                    hasNo = True
+                ElseIf IsFieldHeader(canon) Then
+                    If Not seen.Exists(canon) Then seen(canon) = True
+                    If canon = "출발지ip" Or canon = "목적지ip" Then hasIp = True
+                End If
             End If
         Next columnIndex
+
+        If hasIp Then
+            Dim fieldCount As Long
+            fieldCount = seen.Count
+            If fieldCount >= 2 Or hasNo Then
+                Dim hasNoN As Long
+                hasNoN = IIf(hasNo, 1, 0)
+                If fieldCount > bestCount Or (fieldCount = bestCount And hasNoN > bestHasNo) Then
+                    bestCount = fieldCount
+                    bestHasNo = hasNoN
+                    bestRow = rowIndex
+                End If
+            End If
+        End If
     Next rowIndex
 
-    Err.Raise vbObjectError + 1003, , "No/번호 헤더 행을 찾을 수 없습니다. B열 No 기준 신청서인지 확인하세요."
+    If bestRow > 0 Then
+        FindHeaderRow = bestRow
+        Exit Function
+    End If
+    Err.Raise vbObjectError + 1003, , "헤더 행을 찾을 수 없습니다: 출발지IP/목적지IP 열이 있는 행이 필요합니다."
 End Function
 
 Private Function BuildHeaderMap(ByVal worksheet As Worksheet, ByVal headerRow As Long) As Object
@@ -330,7 +370,7 @@ End Function
 
 Private Function CanonicalHeaderName(ByVal headerName As String) As String
     Select Case headerName
-        Case "no", "번호", "순번", "연번": CanonicalHeaderName = "no"
+        Case "no", "번호", "순번", "연번", "seq", "순서", "항번", "일련번호", "번": CanonicalHeaderName = "no"
         Case "출발지ip", "출발ip", "sourceip", "srcip", "src", "출발지주소", "송신ip", "원본ip": CanonicalHeaderName = "출발지ip"
         Case "출발지", "출발지명", "출발", "source", "srcname", "출발지설명", "출발지ip설명", "출발지ip설멸", "출발지설멸", "출발ip설명", "출발ip설멸", "출발지내용", "송신자", "src설명": CanonicalHeaderName = "출발지"
         Case "목적지ip", "목적ip", "destinationip", "dstip", "dst", "목적지주소", "수신ip": CanonicalHeaderName = "목적지ip"
@@ -715,7 +755,24 @@ Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String
-    HeaderKey = LCase$(Replace(Trim$(headerText), " ", ""))
+    Dim k As String
+    k = LCase$(Replace(Trim$(headerText), " ", ""))
+    ' strip decorating punctuation (No. / No# / (No) / No:)
+    Dim puncts As Variant, p As Variant
+    puncts = Array(".", "#", ":", "/", "(", ")", "[", "]", "-", ChrW(65294), ChrW(12290))
+    Dim changed As Boolean
+    Do
+        changed = False
+        For Each p In puncts
+            If Len(k) > 0 Then
+                If Left$(k, 1) = p Then k = Mid$(k, 2): changed = True
+            End If
+            If Len(k) > 0 Then
+                If Right$(k, 1) = p Then k = Left$(k, Len(k) - 1): changed = True
+            End If
+        Next p
+    Loop While changed
+    HeaderKey = k
 End Function
 
 Private Sub FormatFirewallsSheet(ByVal worksheet As Worksheet)

@@ -20,6 +20,7 @@ from route_oracle import (  # noqa: E402
     cidr_start,
     ip_to_number,
     ranges_overlap,
+    split_address_list,
 )
 
 
@@ -466,3 +467,56 @@ def test_scenario27_auto_disabled_firewall_consumes_ordinal():
     assert r.status == "MULTI_PATH"
     assert r.path_count == 2  # FW-OFF contributes nothing
     assert r.target_firewalls == "FW-A"  # ordinal 2 < FW-B ordinal 3
+
+
+# --------------------------------------------------------------------------- #
+# Space-separated multi-CIDR normalization (firewall/network INPUT cells).
+# split_address_list already handles newlines/commas/NBSP/tabs/fullwidth; it must
+# ALSO treat runs of ASCII spaces between tokens as a separator, mirroring the
+# request-field _norm_list. CIDR/IP tokens never contain spaces, so this is safe.
+# --------------------------------------------------------------------------- #
+
+def test_split_address_list_space_separated():
+    """S1: two space-separated CIDRs split into two tokens."""
+    assert split_address_list("10.10.0.0/16 172.16.0.0/16") == [
+        "10.10.0.0/16", "172.16.0.0/16",
+    ]
+
+
+def test_split_address_list_mixed_comma_and_space():
+    """S3: comma AND space-run delimiters in one value -> 3 tokens."""
+    assert split_address_list("10.10.0.0/16,  172.16.0.0/16   10.20.0.0/16") == [
+        "10.10.0.0/16", "172.16.0.0/16", "10.20.0.0/16",
+    ]
+
+
+def test_split_address_list_no_over_split():
+    """S7: trailing/leading spaces produce one token, no empty token."""
+    assert split_address_list("10.10.0.0/16  ") == ["10.10.0.0/16"]
+    assert split_address_list("  10.10.0.0/16") == ["10.10.0.0/16"]
+
+
+def test_split_address_list_existing_delimiters_unchanged():
+    """S4 regression: single CIDR + newline/comma/NBSP/semicolon still correct."""
+    assert split_address_list("10.10.0.0/16") == ["10.10.0.0/16"]
+    assert split_address_list("10.10.0.0/16\n172.16.0.0/16") == [
+        "10.10.0.0/16", "172.16.0.0/16"]
+    assert split_address_list("10.10.0.0/16, 172.16.0.0/16") == [
+        "10.10.0.0/16", "172.16.0.0/16"]
+    assert split_address_list("\u00a010.10.0.0/16\u00a0") == ["10.10.0.0/16"]
+    assert split_address_list("10.10.0.0/16;172.16.0.0/16") == [
+        "10.10.0.0/16", "172.16.0.0/16"]
+
+
+def test_space_separated_inside_cidr_routes_correctly():
+    """S2: a firewall whose inside_cidr is space-separated multi-CIDR must match a
+    request landing in the SECOND CIDR (regression: it used to mis-resolve to
+    INTRA_ZONE / empty target because the two CIDRs were never split)."""
+    fws = [
+        Firewall("FW-SP", inside_cidr="10.10.0.0/16 10.20.0.0/16",
+                 outside_cidr="0.0.0.0/0"),
+    ]
+    eng = RouteEngine(networks=[], firewalls=fws, routing_paths=[])
+    r = eng.analyze("10.20.0.5", "8.8.8.8", "OUT")
+    assert r.status == "OK"
+    assert r.target_firewalls == "FW-SP"

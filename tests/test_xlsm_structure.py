@@ -338,6 +338,39 @@ def test_auto_zone_ordinal_counts_all_rows():
     assert "If IsEnabled(ws.Cells(i, 3).Value) Then mEnabledFw" not in norm
 
 
+def test_vba_split_address_list_collapses_spaces():
+    """S6 parity: VBA SplitAddressList must collapse ASCII space-runs into ';'
+    (mirrors Python split_address_list) so space-separated multi-CIDR splits."""
+    src = open(VBA_ROUTE, encoding="utf-8").read().replace("\r\n", "\n")
+    fn = src[src.find("Private Function SplitAddressList"):]
+    fn = fn[:fn.find("End Function")]
+    assert 'Replace(normalized, " ", ";")' in fn, \
+        "SplitAddressList must turn spaces into ';' to split space-separated CIDRs"
+
+
+def test_vba_find_header_row_is_content_based():
+    """Parity: VBA FindHeaderRow must detect the header row by FIELD CONTENT
+    (IP columns + field count), not by an exact 'no'/'번호' cell match."""
+    src = open(VBA_POLICY, encoding="utf-8").read().replace("\r\n", "\n")
+    fn = src[src.find("Private Function FindHeaderRow"):]
+    fn = fn[:fn.find("\nEnd Function")]
+    # must score by IP presence + field count, not the old exact-match anchor
+    assert "hasIp" in fn and "fieldCount" in fn, "FindHeaderRow must score by content"
+    assert 'If valueText = "no" Or valueText = "번호" Then' not in fn, \
+        "old exact-match 'no'/'번호' anchor must be gone"
+    # IsFieldHeader helper must exist and enumerate the field headers
+    assert "Private Function IsFieldHeader" in src
+
+
+def test_vba_header_key_strips_punctuation():
+    """Parity: HeaderKey must strip decorating punctuation so 'No.' -> 'no'."""
+    src = open(VBA_POLICY, encoding="utf-8").read().replace("\r\n", "\n")
+    fn = src[src.find("Private Function HeaderKey"):]
+    fn = fn[:fn.find("\nEnd Function")]
+    assert "puncts" in fn and ("Left$(k" in fn or "Mid$(k" in fn), \
+        "HeaderKey must strip leading/trailing punctuation (No. -> no)"
+
+
 def test_workbook_open_does_not_swallow_errors():
     """Workbook_Open auto-run must surface failures, not blanket-swallow them."""
     from pyopenvba import excel as ex

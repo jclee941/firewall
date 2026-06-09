@@ -902,7 +902,28 @@ Private Function SplitAddressList(ByVal addressList As String) As String()
     normalized = Replace(normalized, ",", ";")
     normalized = Replace(normalized, ChrW(65292), ";")
     normalized = Replace(normalized, ChrW(65307), ";")
-    SplitAddressList = Split(normalized, ";")
+    ' runs of ASCII spaces between tokens are also a separator (mirror Python
+    ' split_address_list / request _norm_list): CIDR/IP tokens never contain a
+    ' space, so 'a b' -> 'a;b'. Empty tokens from repeated separators are dropped.
+    normalized = Replace(normalized, " ", ";")
+    Dim raw() As String
+    raw = Split(normalized, ";")
+    Dim outList() As String
+    ReDim outList(0 To UBound(raw))
+    Dim i As Long, n As Long
+    n = 0
+    For i = LBound(raw) To UBound(raw)
+        If Len(Trim$(raw(i))) > 0 Then
+            outList(n) = Trim$(raw(i))
+            n = n + 1
+        End If
+    Next i
+    If n = 0 Then
+        SplitAddressList = Split(vbNullString, ";")  ' empty array (UBound -1)
+    Else
+        ReDim Preserve outList(0 To n - 1)
+        SplitAddressList = outList
+    End If
 End Function
 
 Private Function IpToNumber(ByVal ipText As String) As Double

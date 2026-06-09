@@ -37,10 +37,13 @@ def _format_metadata_date(value) -> str:
 # --------------------------------------------------------------------------- #
 
 def header_key(text) -> str:
-    # LCase$(Replace(Trim$(headerText), " ", ""))
+    # LCase$(Replace(Trim$(headerText), " ", "")) then drop decorating
+    # punctuation commonly wrapping headers (No. / No# / (No) / No: ).
     if text is None:
         return ""
-    return str(text).strip().replace(" ", "").lower()
+    s = str(text).strip().replace(" ", "").lower()
+    s = s.strip(".#:/()[]-．。")
+    return s
 
 
 # --------------------------------------------------------------------------- #
@@ -48,7 +51,7 @@ def header_key(text) -> str:
 # --------------------------------------------------------------------------- #
 
 _ALIASES = {
-    "no": ["no", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88"],
+    "no": ["no", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88", "seq", "\uc21c\uc11c", "\ud56d\ubc88", "\uc77c\ub828\ubc88\ud638", "\ubc88"],
     "\ucd9c\ubc1c\uc9c0ip": ["\ucd9c\ubc1c\uc9c0ip", "\ucd9c\ubc1cip", "sourceip", "srcip", "src",
                 "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c", "\uc1a1\uc2e0ip", "\uc6d0\ubcf8ip"],
     "\ucd9c\ubc1c\uc9c0": ["\ucd9c\ubc1c\uc9c0", "\ucd9c\ubc1c\uc9c0\uba85", "\ucd9c\ubc1c", "source", "srcname",
@@ -109,7 +112,7 @@ class RequestParseError(Exception):
     pass
 
 
-def sheet_to_filled_rows(ws) -> list[list]:
+def sheet_to_filled_rows(ws, user_aliases: dict[str, str] | None = None) -> list[list]:
     """Read an openpyxl worksheet into list[list], propagating merged-cell
     values ONLY across DATA rows (rows after the header row).
 
@@ -126,7 +129,7 @@ def sheet_to_filled_rows(ws) -> list[list]:
     rows = [[c.value for c in row] for row in ws.iter_rows()]
     # locate header row on the RAW grid (No/번호 lives in the merge top-left)
     try:
-        header_row = find_header_row(rows)
+        header_row = find_header_row(rows, user_aliases)
     except RequestParseError:
         header_row = 0  # no header found; fill nothing, let caller raise
     # propagate top-left value across merged ranges, DATA rows only
@@ -212,15 +215,63 @@ def _last_column(rows: list[list], r1: int) -> int:
     return last
 
 
-def find_header_row(rows: list[list]) -> int:
-    # scan rows 1..30 for a cell whose HeaderKey is "no" or "번호"
+# Field headers (besides 'no') whose presence identifies a header row.
+_FIELD_HEADERS = frozenset(_CASE_ORDER) - {"no"}
+_IP_HEADERS = frozenset({"\ucd9c\ubc1c\uc9c0ip", "\ubaa9\uc801\uc9c0ip"})
+
+
+def _row_header_signature(rows: list[list], r1: int,
+                          user_aliases: dict[str, str] | None = None):
+    """Return (field_count, has_no, has_ip) describing how header-like a row is.
+
+    A cell is a recognized field header if it canonicalizes (built-in alias, then
+    user alias) to a known canonical name. This is the same mapping used to build
+    the column map, so a row that scores high here IS the row whose columns we can
+    actually read."""
+    last_col = _last_column(rows, r1)
+    canon_seen: set[str] = set()
+    has_no = False
+    for c1 in range(1, last_col + 1):
+        key = header_key(_cell(rows, r1, c1))
+        if not key:
+            continue
+        name = canonical_header_name(key)
+        if name == key and user_aliases and key in user_aliases:
+            name = user_aliases[key]
+        if name == "no":
+            has_no = True
+        elif name in _FIELD_HEADERS:
+            canon_seen.add(name)
+    has_ip = bool(canon_seen & _IP_HEADERS)
+    return len(canon_seen), has_no, has_ip
+
+
+def find_header_row(rows: list[list],
+                    user_aliases: dict[str, str] | None = None) -> int:
+    """Locate the header row by its HEADER CONTENT (not by requiring a 'No' cell).
+
+    Scans rows 1..30 and picks the row with the most recognized field headers,
+    requiring at least one IP column (출발지IP / 목적지IP) so a stray metadata
+    row never wins. A 'No'/번호 cell is an optional tie-breaker, no longer
+    mandatory — forms that omit it still parse."""
+    best_row = 0
+    best_key = (0, False)  # (field_count, has_no)
     for r1 in range(1, 31):
-        last_col = _last_column(rows, r1)
-        for c1 in range(1, last_col + 1):
-            key = header_key(_cell(rows, r1, c1))
-            if key == "no" or key == "번호":
-                return r1
-    raise RequestParseError("No/번호 헤더 행을 찾을 수 없습니다.")
+        field_count, has_no, has_ip = _row_header_signature(rows, r1, user_aliases)
+        if not has_ip:
+            continue
+        # need a real header row: an IP column plus at least one more field, OR a
+        # 'No' anchor alongside the IP column.
+        if field_count < 2 and not has_no:
+            continue
+        key = (field_count, has_no)
+        if key > best_key:
+            best_key = key
+            best_row = r1
+    if best_row:
+        return best_row
+    raise RequestParseError(
+        "\ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: \ucd9c\ubc1c\uc9c0IP/\ubaa9\uc801\uc9c0IP \uc5f4\uc774 \uc788\ub294 \ud589\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.")
 
 
 def build_header_map(rows: list[list], header_row: int,
@@ -270,7 +321,7 @@ def parse_request_sheet(rows: list[list],
     Raises RequestParseError on missing header row / required columns.
     user_aliases mirrors settings header_alias (built-in canonical wins first).
     """
-    header_row = find_header_row(rows)
+    header_row = find_header_row(rows, user_aliases)
     hmap = build_header_map(rows, header_row, user_aliases)
     validate_required_headers(hmap)
 

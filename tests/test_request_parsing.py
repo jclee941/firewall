@@ -97,10 +97,77 @@ def test_find_header_row_scans_top_30():
     assert find_header_row(rows) == 3
 
 
-def test_find_header_row_missing_raises():
-    rows = [["출발지IP", "목적지IP"]]  # no No/번호 anywhere
+def test_find_header_row_detects_by_header_content_without_no():
+    """Header row is found by its FIELD HEADERS (출발지IP/목적지IP), even with no
+    No/번호 column at all — the 'No' anchor is optional, not required."""
+    rows = [["출발지IP", "목적지IP", "프로토콜", "포트"]]
+    assert find_header_row(rows) == 1
+
+
+def test_find_header_row_no_variants_detected():
+    """No-column spelling variants must all anchor the header row: No. 순번 연번
+    '순 번' Seq # — previously only exact 'no'/'번호' worked."""
+    for no_label in ("No.", "순번", "연번", "순 번", "Seq", "#"):
+        rows = [[no_label, "출발지IP", "목적지IP", "프로토콜"]]
+        assert find_header_row(rows) == 1, f"{no_label!r} not detected"
+
+
+def test_find_header_row_picks_best_scoring_row():
+    """When several rows have some text, the row with the MOST recognized field
+    headers wins (and must contain a required IP column)."""
+    rows = [
+        ["방화벽 정책 신청서", None, None],        # title, 0 field headers
+        ["작성자", "홍길동", "부서", "인프라"],     # metadata, 0 field headers
+        ["No", "출발지IP", "목적지IP", "프로토콜", "포트", "방향"],  # real header
+    ]
+    assert find_header_row(rows) == 3
+
+
+def test_find_header_row_truly_missing_raises():
+    """A sheet with no recognizable field headers anywhere still raises."""
+    rows = [["제목", "내용"], ["가", "나"]]
     with pytest.raises(RequestParseError):
         find_header_row(rows)
+
+
+def test_find_header_row_requires_ip_column():
+    """A row with field-ish headers but NO IP column is not a valid header row."""
+    rows = [["프로토콜", "포트", "방향", "용도"]]  # no 출발지IP/목적지IP
+    with pytest.raises(RequestParseError):
+        find_header_row(rows)
+
+
+def test_find_header_row_uses_user_aliases():
+    """Header detection must honor settings header_alias so a fully custom IP
+    column name still anchors the header row (parity with VBA UserAliasCanonical
+    in FindHeaderRow). Without this, Python would raise where VBA succeeds."""
+    # custom company headers that are NOT built-in aliases
+    rows = [["Source Addr", "Dest Addr", "Service", "Port"]]
+    # built-in fails (no recognized IP column)
+    with pytest.raises(RequestParseError):
+        find_header_row(rows)
+    # with user aliases mapping the normalized keys to canonical IP names, it works
+    aliases = {"sourceaddr": "\ucd9c\ubc1c\uc9c0ip", "destaddr": "\ubaa9\uc801\uc9c0ip"}
+    assert find_header_row(rows, aliases) == 1
+
+
+def test_parse_request_sheet_with_alias_only_ip_headers(tmp_path):
+    """Public entry point: parse_request_sheet succeeds end-to-end when the IP
+    columns are named ONLY by user aliases (no built-in match), exercising the
+    full header-detect -> column-map -> extract path with user_aliases threaded
+    through. Mirrors VBA where mUserAliases feeds both FindHeaderRow and
+    BuildHeaderMap."""
+    rows = [
+        ["Source Addr", "Dest Addr", "Service", "Port"],
+        ["10.10.10.5", "172.16.1.10", "TCP", "443"],
+    ]
+    p = _build_xlsx(tmp_path, "alias_ip.xlsx", rows)
+    aliases = {"sourceaddr": "\ucd9c\ubc1c\uc9c0ip", "destaddr": "\ubaa9\uc801\uc9c0ip"}
+    parsed = parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active),
+                                 aliases)
+    assert len(parsed) == 1
+    assert parsed[0]["source_ip"] == "10.10.10.5"
+    assert parsed[0]["dest_ip"] == "172.16.1.10"
 
 
 # --------------------------------------------------------------------------- #
