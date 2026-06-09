@@ -43,3 +43,23 @@ def canonical_with_user_aliases(raw_header: str, user_aliases: dict[str, str]) -
     if key in user_aliases:
         return user_aliases[key]
     return key  # passthrough (unknown)
+
+
+def aliases_from_rows(rows) -> dict[str, str]:
+    """Build {alias_key: canonical} from a header_aliases sheet's data rows.
+
+    Each row is (standard, your_column): the operator's column name `your_column`
+    maps to the `standard` canonical column. Both are normalized via header_key.
+    Blank/invalid rows are skipped. `standard` is matched through the built-in
+    alias map so 'Source'/'\ucd9c\ubc1c\uc9c0' etc. also resolve to the canonical name."""
+    result: dict[str, str] = {}
+    for row in rows:
+        if not row or len(row) < 2:
+            continue
+        standard, your_col = row[0], row[1]
+        canon = canonical_header_name(header_key(standard))
+        alias = header_key(your_col)
+        if not canon or not alias:
+            continue
+        result[alias] = canon
+    return result

@@ -24,6 +24,7 @@ from request_parser_oracle import (  # noqa: E402
     header_key,
 )
 from user_alias_oracle import (  # noqa: E402
+    aliases_from_rows,
     canonical_with_user_aliases,
     parse_user_aliases,
 )
@@ -75,3 +76,36 @@ def test_english_alias():
     aliases = parse_user_aliases("프로토콜=ip protocol; 포트=dest port")
     assert canonical_with_user_aliases("IP Protocol", aliases) == "프로토콜"
     assert canonical_with_user_aliases("Dest Port", aliases) == "포트"
+
+
+def test_alias_sheet_rows():
+    # header_aliases sheet: (standard, your_column) rows
+    rows = [
+        ["\ucd9c\ubc1c\uc9c0", "\ucd9c\ubc1c\uc9c0ip\uc124\uba85"],
+        ["\ubaa9\uc801\uc9c0", "\ubaa9\uc801\uc9c0ip\uc124\uba85"],
+        ["\ud504\ub85c\ud1a0\ucf5c", "tcp/udp"],
+        ["\ubc29\ud5a5", "\uad6c\ubd84"],
+        ["\uc2dc\uc791\uc77c", "\uc2dc\uc791\uc77c\uc790"],
+        ["\uc885\ub8cc\uc77c", "\uc885\ub8cc\uc77c\uc790"],
+    ]
+    aliases = aliases_from_rows(rows)
+    assert canonical_with_user_aliases("\ucd9c\ubc1c\uc9c0ip\uc124\uba85", aliases) == "\ucd9c\ubc1c\uc9c0"
+    assert canonical_with_user_aliases("\ubaa9\uc801\uc9c0ip\uc124\uba85", aliases) == "\ubaa9\uc801\uc9c0"
+    assert canonical_with_user_aliases("tcp/udp", aliases) == "\ud504\ub85c\ud1a0\ucf5c"
+    assert canonical_with_user_aliases("\uad6c\ubd84", aliases) == "\ubc29\ud5a5"
+    assert canonical_with_user_aliases("\uc2dc\uc791\uc77c\uc790", aliases) == "\uc2dc\uc791\uc77c"
+    assert canonical_with_user_aliases("\uc885\ub8cc\uc77c\uc790", aliases) == "\uc885\ub8cc\uc77c"
+
+
+def test_alias_sheet_standard_via_builtin():
+    # `standard` side may itself be an alias (Source -> 출발지) and still resolve
+    rows = [["Source", "\uc1a1\uc2e0ip"], ["Destination", "\uc218\uc2e0ip"]]
+    aliases = aliases_from_rows(rows)
+    assert canonical_with_user_aliases("\uc1a1\uc2e0ip", aliases) == "\ucd9c\ubc1c\uc9c0"
+    assert canonical_with_user_aliases("\uc218\uc2e0ip", aliases) == "\ubaa9\uc801\uc9c0"
+
+
+def test_alias_sheet_skips_blank_rows():
+    rows = [["", ""], ["\ubc29\ud5a5"], ["\ubc29\ud5a5", "\uad6c\ubd84"], None]
+    aliases = aliases_from_rows(rows)
+    assert aliases == {"\uad6c\ubd84": "\ubc29\ud5a5"}

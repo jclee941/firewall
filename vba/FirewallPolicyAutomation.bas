@@ -364,28 +364,54 @@ Private Sub LoadUserAliases(ByVal settingsSheet As Worksheet)
     Set mUserAliases = CreateObject("Scripting.Dictionary")
     Dim raw As String
     raw = SettingsValue(settingsSheet, "header_alias")
-    If Len(Trim$(raw)) = 0 Then Exit Sub
-    Dim entries() As String, i As Long
-    entries = Split(raw, ";")
-    For i = LBound(entries) To UBound(entries)
-        Dim entry As String
-        entry = Trim$(entries(i))
-        Dim eqPos As Long
-        eqPos = InStr(entry, "=")
-        If eqPos > 0 Then
-            Dim canon As String
-            canon = HeaderKey(Left$(entry, eqPos - 1))
-            If Len(canon) > 0 Then
-                Dim aliasList() As String, j As Long
-                aliasList = Split(Mid$(entry, eqPos + 1), ",")
-                For j = LBound(aliasList) To UBound(aliasList)
-                    Dim a As String
-                    a = HeaderKey(aliasList(j))
-                    If Len(a) > 0 Then mUserAliases(a) = canon
-                Next j
+    ' Parse the one-line settings.header_alias only if present...
+    If Len(Trim$(raw)) > 0 Then
+        Dim entries() As String, i As Long
+        entries = Split(raw, ";")
+        For i = LBound(entries) To UBound(entries)
+            Dim entry As String
+            entry = Trim$(entries(i))
+            Dim eqPos As Long
+            eqPos = InStr(entry, "=")
+            If eqPos > 0 Then
+                Dim canon As String
+                canon = HeaderKey(Left$(entry, eqPos - 1))
+                If Len(canon) > 0 Then
+                    Dim aliasList() As String, j As Long
+                    aliasList = Split(Mid$(entry, eqPos + 1), ",")
+                    For j = LBound(aliasList) To UBound(aliasList)
+                        Dim a As String
+                        a = HeaderKey(aliasList(j))
+                        If Len(a) > 0 Then mUserAliases(a) = canon
+                    Next j
+                End If
             End If
+        Next i
+    End If
+    ' ...but ALWAYS read the header_aliases table sheet (the operator-friendly
+    ' path), even when settings.header_alias is blank.
+    LoadAliasSheet
+End Sub
+
+Private Sub LoadAliasSheet()
+    ' header_aliases sheet: col1=standard (canonical or its built-in alias),
+    ' col2=your_column (the operator's actual header). Easier than the settings
+    ' one-line string — operators just add a row per non-standard column.
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets("header_aliases")
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    Dim lastRow As Long, r As Long
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For r = 2 To lastRow
+        Dim std As String, yourCol As String
+        std = HeaderKey(CStr(ws.Cells(r, 1).Value))
+        yourCol = HeaderKey(CStr(ws.Cells(r, 2).Value))
+        If Len(std) > 0 And Len(yourCol) > 0 Then
+            mUserAliases(yourCol) = CanonicalHeaderName(std)
         End If
-    Next i
+    Next r
 End Sub
 
 Private Function SettingsValue(ByVal settingsSheet As Worksheet, ByVal key As String) As String

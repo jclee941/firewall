@@ -78,6 +78,19 @@ SETTINGS = [
 ]
 PROCESSING_LOG = [["processed_at", "source_file", "status", "merged_rows", "message"]]
 
+# header_aliases: table-form alias mapping. Operators add one row per
+# non-standard header in their request files. standard = the canonical column
+# (or any built-in alias of it); your_column = the actual header in the request.
+HEADER_ALIASES = [
+    ["standard", "your_column", "\uc124\uba85"],
+    ["\ucd9c\ubc1c\uc9c0", "", "\uc2e0\uccad\uc11c\uc758 \ucd9c\ubc1c\uc9c0 \uc774\ub984/\uc124\uba85 \uceec\ub7fc\uba85 (\uc608: \ucd9c\ubc1c\uc9c0ip\uc124\uba85)"],
+    ["\ubaa9\uc801\uc9c0", "", "\uc2e0\uccad\uc11c\uc758 \ubaa9\uc801\uc9c0 \uc774\ub984/\uc124\uba85 \uceec\ub7fc\uba85"],
+    ["\ud504\ub85c\ud1a0\ucf5c", "", "\uc608: tcp/udp"],
+    ["\ubc29\ud5a5", "", "\uc608: \uad6c\ubd84"],
+    ["\uc2dc\uc791\uc77c", "", "\uc608: \uc2dc\uc791\uc77c\uc790"],
+    ["\uc885\ub8cc\uc77c", "", "\uc608: \uc885\ub8cc\uc77c\uc790"],
+]
+
 SAMPLE_FORMAT = [
     [None, "No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
      "방향", "용도", "시작일", "종료일", "비고"],
@@ -151,6 +164,7 @@ _WIDTHS = {
     "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
     "routing_paths": {"A": 16, "B": 12, "C": 12, "D": 12, "E": 12, "F": 12, "G": 9},
     "settings": {"A": 22, "B": 26, "C": 60},
+    "header_aliases": {"A": 16, "B": 22, "C": 44},
     "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
     "sample-request-format": {"A": 4, "B": 6, "C": 16, "D": 12, "E": 16,
                               "F": 12, "G": 10, "H": 8, "I": 8, "J": 18,
@@ -301,6 +315,7 @@ def main() -> int:
     add("network_definitions", NETWORK_DEFS)
     add("routing_paths", ROUTING_PATHS)
     add("settings", SETTINGS)
+    add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)
     # sample-request-format has a blank A column header
     sf = wb.create_sheet("sample-request-format")
