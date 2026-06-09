@@ -82,6 +82,13 @@ jobs:
             echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Version-stamp the artifact filenames
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          cp dist/firewall-policy-automation.xlsm "firewall-policy-automation-${TAG}.xlsm"
+          cp firewall-policy-automation-bundle.zip "firewall-policy-automation-${TAG}-bundle.zip"
+          ls -la firewall-policy-automation-${TAG}.xlsm firewall-policy-automation-${TAG}-bundle.zip
+
       - name: Create / update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -110,18 +117,18 @@ jobs:
           - 사용자 정의 헤더 별칭 (settings header_alias)
           - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
 
-          첨부물: `firewall-policy-automation.xlsm`(단일 파일) + `firewall-policy-automation-bundle.zip`(xlsm + request-folder 폴더 구조 동봉).
+          첨부물: `firewall-policy-automation-<버전>.xlsm`(단일 파일) + `firewall-policy-automation-<버전>-bundle.zip`(xlsm + request-folder 동봉).
           이 릴리즈는 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
           EOF
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$TAG" \
-              dist/firewall-policy-automation.xlsm \
-              firewall-policy-automation-bundle.zip \
+              "firewall-policy-automation-${TAG}.xlsm" \
+              "firewall-policy-automation-${TAG}-bundle.zip" \
               --repo "${{ github.repository }}" --clobber
           else
             gh release create "$TAG" \
-              dist/firewall-policy-automation.xlsm \
-              firewall-policy-automation-bundle.zip \
+              "firewall-policy-automation-${TAG}.xlsm" \
+              "firewall-policy-automation-${TAG}-bundle.zip" \
               --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
               --title "$TAG — Firewall Route Analysis (적용대상방화벽 경로 분석)" \
