@@ -20,6 +20,9 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.comments import Comment
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.worksheet.datavalidation import DataValidation
 from pyopenvba import ExcelFile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -100,11 +103,15 @@ SAMPLE_FORMAT = [
 
 USAGE = [
     ["Step", "Action"],
-    ["1", "firewalls 시트에 방화벽 장비를 등록한다"],
-    ["2", "network_definitions 시트에 IP 대역과 zone을 등록한다 (대역정의)"],
-    ["3", "routing_paths 시트에 zone-to-zone 경로를 등록한다 (라우팅경로)"],
-    ["4", "requests 시트에 신청서를 입력하거나 MergeFirewallRequestFolder로 폴더를 통합한다"],
-    ["5", "AnalyzeRequestRoutes 매크로를 실행해 적용대상방화벽 경로를 계산한다"],
+    ["1", "firewalls 시트에 방화벽 장비를 등록한다. inside_cidr(내부대역)·outside_cidr(외부대역)만 적어도 경로가 자동 생성된다"],
+    ["2", "(선택) network_definitions 시트에 IP 대역→zone 매핑을 등록한다 (대역정의). 비워두면 firewalls의 inside/outside로 자동 추론"],
+    ["3", "(고급) zone 경로를 직접 제어하려면 routing_paths 시트에 zone-to-zone 경로를 등록한다 (라우팅경로). 행이 있으면 우선 적용"],
+    ["4", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 폴더를 선택한다"],
+    ["5", "requests 시트에 직접 입력하거나 MergeFirewallRequestFolder 매크로로 폴더 안 신청서를 통합한다 (Alt+F8)"],
+    ["6", "AnalyzeRequestRoutes 매크로를 실행해 적용대상방화벽 경로와 검증 상태를 계산한다"],
+    ["⚠", "입력 시트(녹색·황색 탭)는 보호되어 있다. 헤더는 수정 불가, 데이터 입력 영역만 타이핑 가능"],
+    ["ℹ", "requests·processing_log(파랑·회색 탭)은 매크로가 자동으로 채운다. 직접 수정하지 않는다"],
+    ["💡", "프로토콜·방향 셀은 드롭다운 목록에서 선택. 출발지IP·목적지IP가 비면 빨간색으로 표시된다"],
 ]
 
 # Pre-filled example requests so AnalyzeRequestRoutes has something to compute.
@@ -205,6 +212,136 @@ def _write_rows(ws, rows):
             if val is not None:
                 ws.cell(row=r, column=c, value=val)
 
+# --------------------------------------------------------------------------- #
+# Build-time UX (scope B): input-assist + display only. Never changes a cell
+# value, header, column count, or the route algorithm. All openpyxl-native;
+# vbaProject.bin is preserved by keep_vba=True on save.
+# --------------------------------------------------------------------------- #
+
+_UX_LAST_ROW = 5000  # bound validations/CF so we never explode to 1048576 rows
+
+# requests column ordinals (1-indexed) we attach UX to
+_REQ_PROTOCOL_COL = 8     # 프로토콜
+_REQ_PORT_COL = 9         # 포트
+_REQ_DIRECTION_COL = 10   # 방향
+_REQ_SRC_IP_COL = 4       # 출발지IP (required)
+_REQ_DST_IP_COL = 6       # 목적지IP (required)
+
+# tab colors: input sheets vs result/log sheets (display navigation only)
+_TAB_COLORS = {
+    "requests": "FF4472C4",            # result (blue)
+    "firewalls": "FF70AD47",           # input (green)
+    "network_definitions": "FF70AD47",
+    "routing_paths": "FF70AD47",
+    "settings": "FFFFC000",            # config (amber)
+    "header_aliases": "FFFFC000",
+    "processing_log": "FFA6A6A6",      # log (grey)
+    "sample-request-format": "FFED7D31",  # sample (orange)
+    "usage": "FFED7D31",
+}
+
+_EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")  # light red
+
+# operator-input sheets that MAY be protected. requests/processing_log are
+# written by VBA at runtime and must NEVER be protected.
+_PROTECT_SHEETS = {
+    "firewalls", "network_definitions", "routing_paths",
+    "settings", "header_aliases",
+}
+_NO_PROTECT_SHEETS = {"requests", "processing_log"}
+
+
+def _add_list_dv(ws, col_letter, values, *, allow_blank=True):
+    """Attach a bounded list dropdown to col_letter rows 2.._UX_LAST_ROW."""
+    formula = '"' + ",".join(values) + '"'
+    dv = DataValidation(type="list", formula1=formula, allow_blank=allow_blank)
+    dv.error = "목록에서 값을 선택하세요."
+    dv.errorTitle = "잘못된 입력"
+    dv.prompt = "드롭다운에서 선택"
+    ws.add_data_validation(dv)
+    dv.add(f"{col_letter}2:{col_letter}{_UX_LAST_ROW}")
+    return dv
+
+
+def _apply_ux(wb) -> None:
+    from openpyxl.utils import get_column_letter
+
+    # 1) tab colors --------------------------------------------------------- #
+    for name, color in _TAB_COLORS.items():
+        if name in wb.sheetnames:
+            wb[name].sheet_properties.tabColor = color
+
+    req = wb["requests"]
+
+    # 2) dropdowns on requests (프로토콜 / 방향) ---------------------------------- #
+    _add_list_dv(req, get_column_letter(_REQ_PROTOCOL_COL),
+                 ["TCP", "UDP", "ICMP"])
+    # 방향 values must all be accepted by VBA NormalizeDirection (IN/OUT/BOTH)
+    _add_list_dv(req, get_column_letter(_REQ_DIRECTION_COL),
+                 ["IN", "OUT", "BOTH"])
+
+    # mirror the demo dropdowns onto sample-request-format (cols G=7,I=9)
+    if "sample-request-format" in wb.sheetnames:
+        sf = wb["sample-request-format"]
+        _add_list_dv(sf, "G", ["TCP", "UDP", "ICMP"])
+        _add_list_dv(sf, "I", ["IN", "OUT", "BOTH"])
+
+    # 3) firewalls.enabled dropdown (VBA-truthy values only) ----------------- #
+    fw = wb["firewalls"]
+    _add_list_dv(fw, "C", ["Y", "N"])
+    if "network_definitions" in wb.sheetnames:
+        _add_list_dv(wb["network_definitions"], "E", ["Y", "N"])
+
+    # 4) conditional format: flag empty required IP cells -------------------- #
+    src_letter = get_column_letter(_REQ_SRC_IP_COL)  # D
+    dst_letter = get_column_letter(_REQ_DST_IP_COL)  # F
+    for letter in (src_letter, dst_letter):
+        rng = f"{letter}2:{letter}{_UX_LAST_ROW}"
+        # highlight when the cell is blank (display hint, never edits a value)
+        rule = FormulaRule(
+            formula=[f'ISBLANK({letter}2)'],
+            fill=_EMPTY_REQUIRED_FILL,
+            stopIfTrue=False,
+        )
+        req.conditional_formatting.add(rng, rule)
+
+    # 5) header hint comments on key input columns -------------------------- #
+    _src_hint = (
+        "출발지 IP 또는 CIDR\n"
+        "예: 10.10.10.0/24 또는 10.10.10.5\n"
+        "여러 개는 ; 로 구분"
+    )
+    _dst_hint = (
+        "목적지 IP 또는 CIDR\n"
+        "예: 172.16.1.10 또는 172.16.1.0/24\n"
+        "여러 개는 ; 로 구분"
+    )
+    req.cell(1, _REQ_SRC_IP_COL).comment = Comment(_src_hint, "firewall-automation")
+    req.cell(1, _REQ_DST_IP_COL).comment = Comment(_dst_hint, "firewall-automation")
+
+    # 6) sheet protection (operator-input sheets only) ---------------------- #
+    #    requests / processing_log are macro-written -> never protected.
+    #    We UNLOCK the data-entry area rows 2.._UX_LAST_ROW across all columns so
+    #    the editable span EXACTLY matches the validation/CF range advertised to
+    #    Excel (no footgun where a dropdown row is silently un-typeable). The row
+    #    limit is bounded (_UX_LAST_ROW) so per-cell <protection> nodes stay small.
+    #    Headers (row 1) and everything below the limit stay locked.
+    from openpyxl.styles import Protection
+    unlocked = Protection(locked=False)
+    for name in _PROTECT_SHEETS:
+        if name not in wb.sheetnames:
+            continue
+        ws = wb[name]
+        last_col = ws.max_column
+        for r in range(2, _UX_LAST_ROW + 1):
+            for c in range(1, last_col + 1):
+                ws.cell(row=r, column=c).protection = unlocked
+        # enable() flips protection.sheet=True and applies the option flags below
+        ws.protection.enable()
+        # allow common operator gestures even while protected
+        ws.protection.autoFilter = False
+        ws.protection.sort = False
+        ws.protection.formatCells = True
 
 _AUTO_RUN_BODY = (
     "\r\n"
@@ -322,6 +459,9 @@ def main() -> int:
     _write_rows(sf, SAMPLE_FORMAT)
     _style_sheet(sf)
     add("usage", USAGE)
+
+    # build-time UX (input-assist / display only; after all sheets are seeded)
+    _apply_ux(wb)
 
     wb.save(str(OUT))
     wb.close()

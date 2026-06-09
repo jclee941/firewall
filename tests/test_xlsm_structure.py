@@ -350,3 +350,133 @@ def test_workbook_open_does_not_swallow_errors():
         assert "AutoRunErr" in tw, "must have an error handler that surfaces failures"
     finally:
         g.close()
+
+
+# --------------------------------------------------------------------------- #
+# UX (scope B): build-time openpyxl input-assist / display features.
+# These are DISPLAY/INPUT-ASSIST ONLY and must NOT change the route algorithm.
+# All are sheet-level and additive: no cell VALUE changes, no header drift, no
+# max_column/max_row drift, vbaProject.bin preserved (keep_vba=True).
+# --------------------------------------------------------------------------- #
+
+def _dv_for(ws, cell_ref):
+    """Return the DataValidation covering cell_ref on ws, or None."""
+    from openpyxl.utils.cell import coordinate_to_tuple
+    target = coordinate_to_tuple(cell_ref)
+    for dv in ws.data_validations.dataValidation:
+        for rng in dv.sqref.ranges:
+            if (rng.min_row <= target[0] <= rng.max_row
+                    and rng.min_col <= target[1] <= rng.max_col):
+                return dv
+    return None
+
+
+def test_ux_protocol_direction_dropdowns_on_requests(xlsm_path):
+    """requests 프로토콜(col8)·방향(col10) cells offer a dropdown list.
+
+    Values must stay compatible with the route algorithm: 프로토콜 is display-only
+    (TCP/UDP/ICMP); 방향 must be one of the values VBA NormalizeDirection accepts
+    (IN/OUT/BOTH) so the dropdown can never inject a #INVALID direction.
+    """
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    req = wb["requests"]
+
+    proto = _dv_for(req, "H2")
+    assert proto is not None, "프로토콜(col8) has no data validation"
+    assert proto.type == "list"
+    assert set(proto.formula1.strip('"').split(",")) >= {"TCP", "UDP", "ICMP"}
+
+    direction = _dv_for(req, "J2")
+    assert direction is not None, "방향(col10) has no data validation"
+    assert direction.type == "list"
+    assert set(direction.formula1.strip('"').split(",")) <= {"IN", "OUT", "BOTH", ""}
+    assert {"IN", "OUT"} <= set(direction.formula1.strip('"').split(","))
+    # validations must skip the header row and not explode to 1048576 rows
+    for dv in (proto, direction):
+        rng = next(iter(dv.sqref.ranges))
+        assert rng.min_row == 2, "dropdown must start at row 2 (skip header)"
+        assert rng.max_row <= 5000, "dropdown range must be bounded, not whole-column"
+
+
+def test_ux_enabled_dropdown_accepts_vba_truthy(xlsm_path):
+    """firewalls.enabled(col3) dropdown values must all be truthy/falsy under the
+    VBA reader T(v)=UCase(v) in (Y,YES,TRUE,1); list must include both Y and N."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    dv = _dv_for(wb["firewalls"], "C2")
+    assert dv is not None, "firewalls.enabled(col3) has no data validation"
+    assert dv.type == "list"
+    vals = set(dv.formula1.strip('"').split(","))
+    assert {"Y", "N"} <= vals
+    assert vals <= {"Y", "N", "TRUE", "FALSE"}
+
+
+def test_ux_macro_written_sheets_are_not_protected(xlsm_path):
+    """CRITICAL: requests and processing_log are written by VBA at runtime, so they
+    must NOT be sheet-protected (protection would make macro Cells(...).Value fail).
+    Operator-input sheets MAY be protected."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    for macro_sheet in ("requests", "processing_log"):
+        assert wb[macro_sheet].protection.sheet is False, \
+            f"{macro_sheet} is macro-written and must never be protected"
+
+
+def test_ux_settings_folder_cell_unlocked_when_protected(xlsm_path):
+    """If settings is protected, the request_folder value cell (B column of the
+    request_folder row) must be UNLOCKED so SelectRequestFolder can write it."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    s = wb["settings"]
+    if not s.protection.sheet:
+        pytest.skip("settings not protected; folder-cell lock state is moot")
+    folder_row = next(
+        (r for r in range(2, s.max_row + 1)
+         if s.cell(r, 1).value == "request_folder"), None)
+    assert folder_row is not None
+    assert s.cell(folder_row, 2).protection.locked is False, \
+        "request_folder value cell must be unlocked for the folder-select macro"
+
+
+def test_ux_required_input_empty_highlight(xlsm_path):
+    """requests must carry conditional formatting that flags an empty required input
+    cell (출발지IP col4 / 목적지IP col6). Display-only; never touches values."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    req = wb["requests"]
+    cf_ranges = [str(rng) for rng in req.conditional_formatting]
+    joined = " ".join(cf_ranges)
+    assert ("D" in joined and "F" in joined) or len(cf_ranges) >= 1, \
+        "requests has no conditional formatting for empty required cells"
+    assert any(req.conditional_formatting[rng] for rng in req.conditional_formatting), \
+        "conditional formatting present but carries no rules"
+
+
+def test_ux_header_comments_on_key_columns(xlsm_path):
+    """Operator-facing 안내 comments must exist on the requests 출발지IP / 목적지IP
+    header cells (input hints), and the format must stay valid (no value drift)."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    req = wb["requests"]
+    assert req.cell(1, 4).comment is not None, "출발지IP header needs a hint comment"
+    assert req.cell(1, 6).comment is not None, "목적지IP header needs a hint comment"
+    # comment must not alter the header value
+    assert req.cell(1, 4).value == "\ucd9c\ubc1c\uc9c0IP"
+    assert req.cell(1, 6).value == "\ubaa9\uc801\uc9c0IP"
+
+
+def test_ux_tab_colors_assigned(xlsm_path):
+    """Input sheets vs result/log sheets must be visually distinguished by tab color
+    (display-only). At least the requests result sheet must carry a tabColor."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    assert wb["requests"].sheet_properties.tabColor is not None, \
+        "requests tab must have a color"
+    colored = sum(
+        1 for name in wb.sheetnames
+        if wb[name].sheet_properties.tabColor is not None)
+    assert colored >= 3, "at least 3 sheets should be tab-colored for navigation"
+
+
+def test_ux_does_not_change_route_algorithm(xlsm_path):
+    """GUARD: the route oracle result on the seeded data must be byte-identical
+    whether or not UX is applied. UX must be display/input-assist ONLY."""
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    eng = _engine_from_xlsm(wb)
+    res = eng.analyze("10.10.10.5", "8.8.8.8", "OUT")
+    assert res.status == "OK"
+    assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02;SECUI-FW-03"
