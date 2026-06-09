@@ -276,12 +276,13 @@ def test_parse_with_user_aliases_then_route(tmp_path, engine):
 
 
 def test_user_alias_missing_without_setting_raises(tmp_path):
-    # 사용자 별칭을 등록하지 않으면 비표준 헤더는 필수컬럼 누락으로 실패
+    # If the IP columns use names the built-in map does NOT know and no alias is
+    # registered, the required IP columns are missing -> raises.
     rows = [
-        ["No", "출발지주소", "출발지설명", "목적지주소", "목적지설명",
-         "프로토콜", "포트", "방향", "신청사유", "시작일", "종료일", "비고"],
+        ["No", "zzsrc", "\ucd9c\ubc1c\uc9c0", "zzdst", "\ubaa9\uc801\uc9c0",
+         "\ud504\ub85c\ud1a0\ucf5c", "\ud3ec\ud2b8", "\ubc29\ud5a5", "\uc6a9\ub3c4", "\uc2dc\uc791\uc77c", "\uc885\ub8cc\uc77c", "\ube44\uace0"],
         [1, "10.10.10.5", "PC", "10.20.20.5", "DMZ", "TCP", "443",
-         "OUT", "연동", "2026-01-01", "2026-12-31", ""],
+         "OUT", "\uc5f0\ub3d9", "2026-01-01", "2026-12-31", ""],
     ]
     p = _build_xlsx(tmp_path, "req7.xlsx", rows)
     with pytest.raises(RequestParseError):

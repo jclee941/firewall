@@ -330,18 +330,18 @@ End Function
 
 Private Function CanonicalHeaderName(ByVal headerName As String) As String
     Select Case headerName
-        Case "no", "번호": CanonicalHeaderName = "no"
-        Case "출발지ip", "출발ip", "sourceip", "srcip", "src": CanonicalHeaderName = "출발지ip"
-        Case "출발지", "출발지명", "출발", "source", "srcname": CanonicalHeaderName = "출발지"
-        Case "목적지ip", "목적ip", "destinationip", "dstip", "dst": CanonicalHeaderName = "목적지ip"
-        Case "목적지", "목적지명", "목적", "destination", "dstname": CanonicalHeaderName = "목적지"
-        Case "프로토콜", "protocol", "proto": CanonicalHeaderName = "프로토콜"
-        Case "포트", "port", "dport", "목적지포트": CanonicalHeaderName = "포트"
-        Case "방향", "direction": CanonicalHeaderName = "방향"
-        Case "용도", "목적", "usage", "purpose": CanonicalHeaderName = "용도"
-        Case "시작일", "시작", "startdate", "start": CanonicalHeaderName = "시작일"
-        Case "종료일", "종료", "enddate", "end": CanonicalHeaderName = "종료일"
-        Case "비고", "메모", "remark", "remarks", "note": CanonicalHeaderName = "비고"
+        Case "no", "번호", "순번", "연번": CanonicalHeaderName = "no"
+        Case "출발지ip", "출발ip", "sourceip", "srcip", "src", "출발지주소", "송신ip", "원본ip": CanonicalHeaderName = "출발지ip"
+        Case "출발지", "출발지명", "출발", "source", "srcname", "출발지설명", "출발지ip설명", "출발지ip설멸", "출발지설멸", "출발ip설명", "출발ip설멸", "출발지내용", "송신자", "src설명": CanonicalHeaderName = "출발지"
+        Case "목적지ip", "목적ip", "destinationip", "dstip", "dst", "목적지주소", "수신ip": CanonicalHeaderName = "목적지ip"
+        Case "목적지", "목적지명", "목적", "destination", "dstname", "목적지설명", "목적지ip설명", "목적지ip설멸", "목적지설멸", "목적ip설명", "목적ip설멸", "목적지내용", "수신자", "dst설명": CanonicalHeaderName = "목적지"
+        Case "프로토콜", "protocol", "proto", "tcp/udp", "tcpudp", "프로토", "서비스", "프로토콜구분", "l4": CanonicalHeaderName = "프로토콜"
+        Case "포트", "port", "dport", "목적지포트", "서비스포트", "포트번호", "dstport", "service": CanonicalHeaderName = "포트"
+        Case "방향", "direction", "구분", "방향구분", "inout", "in/out", "송수신", "송수신구분": CanonicalHeaderName = "방향"
+        Case "용도", "목적", "usage", "purpose", "사용용도", "신청사유", "설명": CanonicalHeaderName = "용도"
+        Case "시작일", "시작", "startdate", "start", "시작일자", "시작날짜", "적용일", "적용시작일", "사용시작일": CanonicalHeaderName = "시작일"
+        Case "종료일", "종료", "enddate", "end", "종료일자", "종료날짜", "만료일", "적용종료일", "사용종료일": CanonicalHeaderName = "종료일"
+        Case "비고", "메모", "remark", "remarks", "note", "참고": CanonicalHeaderName = "비고"
         Case Else: CanonicalHeaderName = headerName
     End Select
 End Function
