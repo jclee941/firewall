@@ -37,16 +37,18 @@ def request_tree():
 
 
 def _seed_engine():
-    from build_xlsm import FIREWALLS, NETWORK_DEFS, ROUTING_PATHS
+    from build_xlsm import FIREWALLS
 
     def truthy(v):
         return str(v).upper() in ("Y", "YES", "TRUE", "1")
 
-    nets = [Network(r[0], r[1], r[2], r[3], truthy(r[4])) for r in NETWORK_DEFS[1:]]
-    fws = [Firewall(r[0], r[1], truthy(r[2])) for r in FIREWALLS[1:]]
-    rps = [RoutingPath(r[0], r[1], r[2], r[3], r[4], int(r[5]), truthy(r[6]))
-           for r in ROUTING_PATHS[1:]]
-    return RouteEngine(networks=nets, firewalls=fws, routing_paths=rps)
+    # auto inside/outside mode: the firewall CIDRs ARE the zones, so do NOT also
+    # pass network_definitions (its legacy zones would collide with cidr: zones).
+    fws = [Firewall(r[0], r[1], truthy(r[2]),
+                    inside_cidr=r[3] if len(r) > 3 else "",
+                    outside_cidr=r[4] if len(r) > 4 else "")
+           for r in FIREWALLS[1:]]
+    return RouteEngine(networks=[], firewalls=fws, routing_paths=[])
 
 
 def test_tree_structure(request_tree):

@@ -590,11 +590,11 @@ End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:D1").Value = Array("firewall_name", "vendor", "enabled", "comment")
-        worksheet.Range("A2:D4").Value = Array( _
-            Array("SECUI-FW-01", "SECUI", "Y", "내부-서버 구간"), _
-            Array("SECUI-FW-02", "SECUI", "Y", "중간-DMZ 구간"), _
-            Array("SECUI-FW-03", "SECUI", "Y", "DMZ-외부 구간"))
+        worksheet.Range("A1:F1").Value = Array("firewall_name", "vendor", "enabled", "inside_cidr", "outside_cidr", "comment")
+        worksheet.Range("A2:F4").Value = Array( _
+            Array("SECUI-FW-01", "SECUI", "Y", "10.10.0.0/16", "172.16.0.0/16", "내부-서버 구간"), _
+            Array("SECUI-FW-02", "SECUI", "Y", "172.16.0.0/16", "10.20.0.0/16", "서버-DMZ 구간"), _
+            Array("SECUI-FW-03", "SECUI", "Y", "10.20.0.0/16", "0.0.0.0/0", "DMZ-외부 구간"))
     End If
 End Sub
 

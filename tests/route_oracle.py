@@ -106,6 +106,26 @@ def split_address_list(text: str) -> list[str]:
 # Data model
 # --------------------------------------------------------------------------- #
 
+def _canon_zone(cidr: str) -> str:
+    """Canonical zone label for a CIDR/IP side of a firewall.
+
+    A bare IP becomes /32. The network base is normalized (cidr_start) so two
+    spellings of the same range collapse to ONE zone, which is what lets a CIDR
+    shared by two firewalls (a transit range) chain them into a multi-hop path.
+    Returns '' for blank/invalid input."""
+    c = (cidr or "").strip()
+    if not c:
+        return ""
+    try:
+        prefix = cidr_prefix_length(c)
+        base = cidr_start(c)
+    except ValueError:
+        return ""
+    # base back to dotted quad
+    octets = [(base >> 24) & 255, (base >> 16) & 255, (base >> 8) & 255, base & 255]
+    return "cidr:%d.%d.%d.%d/%d" % (octets[0], octets[1], octets[2], octets[3], prefix)
+
+
 @dataclass(frozen=True)
 class Network:
     network_name: str
@@ -120,6 +140,8 @@ class Firewall:
     firewall_name: str
     vendor: str = ""
     enabled: bool = True
+    inside_cidr: str = ""    # CIDR(s) on the inside, ';'-separated
+    outside_cidr: str = ""   # CIDR(s) on the outside, ';'-separated
     comment: str = ""
 
 
@@ -162,9 +184,22 @@ class RouteEngine:
         self._enabled_fw = {
             f.firewall_name for f in self.firewalls if f.enabled
         }
+        # Effective model: explicit routing_paths are authoritative when any
+        # enabled+valid row exists. Otherwise auto-derive from each firewall's
+        # inside_cidr/outside_cidr: every distinct CIDR becomes a zone label
+        # "cidr:<canonical>", a firewall links its inside-zone(s) <-> outside-
+        # zone(s), and the derived CIDR networks are added so request IPs resolve
+        # to those zones. A CIDR shared by two firewalls (e.g. a transit range)
+        # becomes ONE zone, so the graph chains them into a multi-hop path.
+        edges, derived_nets, auto = self._effective_model()
+        # In auto mode, if firewalls supplied inside/outside CIDRs those derived
+        # zones are authoritative (don't mix legacy network_definitions, whose
+        # zones would collide). If no inside/outside CIDRs were given, fall back to
+        # network_definitions so pure zone-graph setups still resolve.
+        self._eff_networks = derived_nets if (auto and derived_nets) else list(self.networks)
         # directed adjacency: src_zone -> list of edges
         self._graph: dict[str, list[RoutingPath]] = {}
-        for rp in self.routing_paths:
+        for rp in edges:
             if not rp.enabled:
                 continue
             if rp.firewall_name not in self._enabled_fw:
@@ -176,6 +211,44 @@ class RouteEngine:
             self._graph[zone].sort(key=self._edge_key)
         self._zone_cache: dict[str, str] = {}
         self._path_cache: dict[str, RouteResult] = {}
+
+    # -- effective model: explicit routing_paths, else inside/outside CIDRs -- #
+    def _effective_model(self) -> tuple[list[RoutingPath], list["Network"], bool]:
+        explicit = [
+            rp for rp in self.routing_paths
+            if rp.enabled and rp.src_zone and rp.dst_zone
+            and rp.firewall_name in self._enabled_fw
+        ]
+        if explicit:
+            return self.routing_paths, [], False   # explicit model is authoritative
+        # auto-derive from inside/outside CIDRs.
+        derived: list[RoutingPath] = []
+        nets: list[Network] = []
+        seen_net: set[str] = set()
+        for idx, fw in enumerate(self.firewalls, start=1):
+            if not fw.enabled:
+                continue
+            inside_cidrs = split_address_list(fw.inside_cidr)
+            outside_cidrs = split_address_list(fw.outside_cidr)
+            inside = [z for z in (_canon_zone(c) for c in inside_cidrs) if z]
+            outside = [z for z in (_canon_zone(c) for c in outside_cidrs) if z]
+            # register each side CIDR as a network so request IPs resolve to it
+            for cidr in inside_cidrs + outside_cidrs:
+                z = _canon_zone(cidr)
+                if z and z not in seen_net:
+                    seen_net.add(z)
+                    nets.append(Network(z, cidr.strip(), z))
+            # link inside <-> outside through this firewall (both directions)
+            for s in inside:
+                for d in outside:
+                    if s == d:
+                        continue
+                    derived.append(RoutingPath(fw.firewall_name, s, d,
+                                               path_order=idx, enabled=True))
+                    derived.append(RoutingPath(fw.firewall_name, d, s,
+                                               path_order=idx, enabled=True))
+        return derived, nets, True
+
 
     # -- zone resolution (longest-prefix match) ----------------------------- #
     def resolve_zone(self, ip_text: str) -> str:
@@ -206,7 +279,7 @@ class RouteEngine:
         best_prefix = -1
         best_zone = "#UNRESOLVED"
         ambiguous = False
-        for n in self.networks:
+        for n in self._eff_networks:
             if not n.enabled:
                 continue
             try:
@@ -336,7 +409,7 @@ class RouteEngine:
                 continue
             zones = {rp.src_zone, rp.dst_zone}
             hit = False
-            for n in self.networks:
+            for n in self._eff_networks:
                 if not n.enabled or n.zone not in zones:
                     continue
                 if ranges_overlap(src_ip, n.network_cidr) or ranges_overlap(dst_ip, n.network_cidr):

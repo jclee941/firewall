@@ -75,13 +75,15 @@
 
 ## firewalls 시트
 
-방화벽 매칭은 `routing_paths`의 zone 그래프 경로로만 결정합니다. firewalls 시트는 장비 식별과 라우팅 hop 표시에만 쓰이며, CIDR 컬럼(`cidr_list`)은 더 이상 존재하지 않습니다. 2번째 컬럼은 `vendor`입니다.
+방화벽 매칭은 zone 그래프 경로로 결정합니다. 그래프는 두 가지 방식 중 하나로 만들어집니다: (1) `routing_paths`에 명시 간선을 넣거나(고급), (2) `routing_paths`가 비어 있으면 `firewalls.inside_cidr`/`outside_cidr`에서 자동 생성. 자동 모드에서는 각 CIDR 자체가 zone(`cidr:<base>/<prefix>`)이 되고, 한 방화벽의 inside↔outside를 양방향 연결합니다. 두 방화벽이 공유하는 CIDR(전송대역)은 하나의 zone으로 합쳍져 멀티홉 경로를 만듭니다. 자동 모드에서는 `network_definitions`를 무시합니다(명시 `routing_paths` 모드에서만 사용). 2번째 컬럼은 `vendor`입니다.
 
 | 컬럼 | 필수 | 형식 | 설명 |
 |---|---:|---|---|
 | `firewall_name` | 예 | 문자열 | 방화벽 식별자. `routing_paths.firewall_name`과 같은 값 |
 | `vendor` | 아니오 | 문자열 | 제조사 (참고용) |
 | `enabled` | 예 | `Y`/`TRUE` 등 | 사용 여부. FALSE면 라우팅 hop에서도 제외 (`Y`,`YES`,`TRUE`,`1`,빈값=사용) |
+| `inside_cidr` | 아니오 | CIDR/IP (`;` 구분) | 내부 대역. 자동 모드에서 이 CIDR이 한 졸(zone)이 됨 |
+| `outside_cidr` | 아니오 | CIDR/IP (`;` 구분) | 외부 대역. inside↔outside를 연결해 경로 자동 생성 |
 | `comment` | 아니오 | 문자열 | 비고 |
 
 ## routing_paths 시트

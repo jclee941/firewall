@@ -131,18 +131,38 @@ Private Sub LoadRouteData()
         End If
     Next i
 
-    ' firewalls
+    ' firewalls (collect enabled set + per-firewall inside/outside CIDRs)
+    Dim fwInside As Object   ' firewall_name -> inside_cidr string
+    Dim fwOutside As Object  ' firewall_name -> outside_cidr string
+    Set fwInside = CreateObject("Scripting.Dictionary")
+    Set fwOutside = CreateObject("Scripting.Dictionary")
+    Dim fwOrder As Object    ' firewall_name -> 1-based row ordinal
+    Set fwOrder = CreateObject("Scripting.Dictionary")
+    Dim fwOrdinal As Long
+    fwOrdinal = 0
     Set ws = ThisWorkbook.Worksheets(FIREWALLS_SHEET)
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     For i = 2 To lastRow
         Dim fwName As String
         fwName = Trim$(CStr(ws.Cells(i, 1).Value))
         If Len(fwName) > 0 Then
-            If IsEnabled(ws.Cells(i, 3).Value) Then mEnabledFw(fwName) = True
+            ' ordinal counts EVERY non-empty firewall row (enabled or not), to
+            ' mirror Python enumerate(self.firewalls, start=1).
+            fwOrdinal = fwOrdinal + 1
+            Dim fwEnabled As Boolean
+            fwEnabled = IsEnabled(ws.Cells(i, 3).Value)
+            If fwEnabled Then
+                mEnabledFw(fwName) = True
+                If Not fwOrder.Exists(fwName) Then fwOrder(fwName) = fwOrdinal
+                fwInside(fwName) = Trim$(CStr(ws.Cells(i, 4).Value))    ' inside_cidr
+                fwOutside(fwName) = Trim$(CStr(ws.Cells(i, 5).Value))   ' outside_cidr
+            End If
         End If
     Next i
 
-    ' routing_paths -> graph
+    ' routing_paths -> graph (explicit model is authoritative when present)
+    Dim explicitCount As Long
+    explicitCount = 0
     Set ws = ThisWorkbook.Worksheets(ROUTING_SHEET)
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
     For i = 2 To lastRow
@@ -163,10 +183,57 @@ Private Sub LoadRouteData()
                     edge("path_order") = ParsePathOrder(ws.Cells(i, 6).Value)
                     If Not mGraph.Exists(sz) Then mGraph.Add sz, New Collection
                     mGraph(sz).Add edge
+                    explicitCount = explicitCount + 1
                 End If
             End If
         End If
     Next i
+
+    ' no explicit routing_paths -> auto-derive from firewalls inside/outside CIDRs:
+    ' each distinct CIDR becomes a zone "cidr:<base/prefix>"; a firewall links its
+    ' inside-zone(s) <-> outside-zone(s). A CIDR shared by two firewalls (transit)
+    ' becomes ONE zone, chaining them into a multi-hop path. The CIDR is also added
+    ' as a network so request IPs resolve to that zone.
+    If explicitCount = 0 Then
+        ' auto mode: derive zones from firewall inside/outside CIDRs into a temp
+        ' network set. Only if any CIDR was derived do we replace mNetworks (so the
+        ' legacy zones don't collide); pure zone-graph setups with no inside/outside
+        ' keep network_definitions. Parity with oracle (auto and derived_nets).
+        Dim derivedNets As Collection
+        Set derivedNets = New Collection
+        Dim seenNet As Object
+        Set seenNet = CreateObject("Scripting.Dictionary")
+        Dim fwKey As Variant
+        For Each fwKey In fwInside.Keys
+            Dim insArr() As String, outArr() As String
+            insArr = SplitCidrList(CStr(fwInside(fwKey)))
+            outArr = SplitCidrList(CStr(fwOutside(fwKey)))
+            Dim ci As Long
+            For ci = LBound(insArr) To UBound(insArr)
+                AddCidrNetworkTo derivedNets, insArr(ci), seenNet
+            Next ci
+            For ci = LBound(outArr) To UBound(outArr)
+                AddCidrNetworkTo derivedNets, outArr(ci), seenNet
+            Next ci
+            ' link inside <-> outside through this firewall (both directions)
+            Dim a As Long, b As Long
+            For a = LBound(insArr) To UBound(insArr)
+                Dim sz2 As String
+                sz2 = CanonZone(insArr(a))
+                If Len(sz2) > 0 Then
+                    For b = LBound(outArr) To UBound(outArr)
+                        Dim dz2 As String
+                        dz2 = CanonZone(outArr(b))
+                        If Len(dz2) > 0 And sz2 <> dz2 Then
+                            AddDerivedEdge CStr(fwKey), sz2, dz2, CLng(fwOrder(fwKey))
+                            AddDerivedEdge CStr(fwKey), dz2, sz2, CLng(fwOrder(fwKey))
+                        End If
+                    Next b
+                End If
+            Next a
+        Next fwKey
+        If derivedNets.Count > 0 Then Set mNetworks = derivedNets
+    End If
 
     ' sort each adjacency list by edge key
     Dim key As Variant
@@ -208,6 +275,62 @@ Private Function ParsePathOrder(ByVal v As Variant) As Long
         ParsePathOrder = CLng(v)
     End If
 End Function
+
+' Split an inside/outside CIDR cell into tokens (';' , ',' , whitespace).
+Private Function SplitCidrList(ByVal raw As String) As String()
+    SplitCidrList = SplitAddressList(raw)
+End Function
+
+' Canonical zone label for one CIDR/IP: "cidr:<base>/<prefix>". '' if invalid.
+' Mirrors tests/route_oracle.py _canon_zone so derived zones match Python.
+Private Function CanonZone(ByVal cidr As String) As String
+    Dim c As String
+    c = Trim$(cidr)
+    If Len(c) = 0 Then Exit Function
+    On Error GoTo bad
+    Dim base As Double, prefix As Long
+    base = CidrStart(c)
+    prefix = CidrPrefixLength(c)
+    On Error GoTo 0
+    Dim o0 As Long, o1 As Long, o2 As Long, o3 As Long
+    o0 = Int(base / 16777216#)
+    o1 = Int((base - o0 * 16777216#) / 65536#)
+    o2 = Int((base - o0 * 16777216# - o1 * 65536#) / 256#)
+    o3 = base - o0 * 16777216# - o1 * 65536# - o2 * 256#
+    CanonZone = "cidr:" & o0 & "." & o1 & "." & o2 & "." & o3 & "/" & prefix
+    Exit Function
+bad:
+    On Error GoTo 0
+    CanonZone = ""
+End Function
+
+' Register a CIDR as a network (zone = its canonical label) once.
+Private Sub AddCidrNetworkTo(ByVal coll As Collection, ByVal cidr As String, ByVal seenNet As Object)
+    Dim z As String
+    z = CanonZone(cidr)
+    If Len(z) = 0 Then Exit Sub
+    If seenNet.Exists(z) Then Exit Sub
+    seenNet(z) = True
+    Dim n As Object
+    Set n = CreateObject("Scripting.Dictionary")
+    n("network_cidr") = Trim$(cidr)
+    n("zone") = z
+    coll.Add n
+End Sub
+
+' Add one directed derived edge to the graph.
+Private Sub AddDerivedEdge(ByVal fwName As String, ByVal sz As String, ByVal dz As String, ByVal pathOrder As Long)
+    Dim de As Object
+    Set de = CreateObject("Scripting.Dictionary")
+    de("firewall_name") = fwName
+    de("src_zone") = sz
+    de("dst_zone") = dz
+    de("ingress_if") = ""
+    de("egress_if") = ""
+    de("path_order") = pathOrder
+    If Not mGraph.Exists(sz) Then mGraph.Add sz, New Collection
+    mGraph(sz).Add de
+End Sub
 
 ' ===================================================================== '
 ' Zone resolution (longest-prefix match)
@@ -775,11 +898,23 @@ Private Function IpToNumber(ByVal ipText As String) As Double
     parts = Split(Trim$(ipText), ".")
     If UBound(parts) <> 3 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
     For i = 0 To 3
-        If Len(Trim$(parts(i))) = 0 Or Not IsNumeric(Trim$(parts(i))) Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
+        If Not IsAllDigits(Trim$(parts(i))) Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
         octet = CLng(Trim$(parts(i)))
         If octet < 0 Or octet > 255 Then Err.Raise vbObjectError + 1000, , "Invalid IPv4 address: " & ipText
     Next i
     IpToNumber = CDbl(Trim$(parts(0))) * 16777216# + CDbl(Trim$(parts(1))) * 65536# + CDbl(Trim$(parts(2))) * 256# + CDbl(Trim$(parts(3)))
+End Function
+
+' True only for a non-empty run of ASCII digits 0-9 (mirrors Python str.isdigit
+' for the IPv4/prefix use: rejects '+1', '1e1', '1.0', '', whitespace).
+Private Function IsAllDigits(ByVal s As String) As Boolean
+    Dim i As Long, ch As Long
+    If Len(s) = 0 Then Exit Function
+    For i = 1 To Len(s)
+        ch = Asc(Mid$(s, i, 1))
+        If ch < 48 Or ch > 57 Then Exit Function
+    Next i
+    IsAllDigits = True
 End Function
 
 Private Function CidrPrefixLength(ByVal cidrText As String) As Long
@@ -788,6 +923,7 @@ Private Function CidrPrefixLength(ByVal cidrText As String) As Long
     If UBound(p) = 0 Then
         CidrPrefixLength = 32
     Else
+        If Not IsAllDigits(Trim$(p(1))) Then Err.Raise vbObjectError + 1004, , "Invalid CIDR prefix: " & cidrText
         CidrPrefixLength = CLng(Trim$(p(1)))
     End If
     If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise vbObjectError + 1004, , "Invalid CIDR prefix: " & cidrText

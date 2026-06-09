@@ -379,3 +379,90 @@ def test_scenario20_in_direction_success(engine):
     assert r.destination_zone == "RED"
     assert r.target_firewalls == "FW-A"
     assert r.zone_path == "RED>GREEN"
+
+
+# --------------------------------------------------------------------------- #
+# Scenario 21-27: inside/outside CIDR auto-derivation (no routing_paths)
+# Each firewall has inside_cidr + outside_cidr; a CIDR shared by two firewalls
+# chains them. Request IPs resolve to the cidr:<base/prefix> zone of their range.
+# --------------------------------------------------------------------------- #
+
+def _auto_engine(firewalls):
+    # no network_definitions needed: the inside/outside CIDRs ARE the zones
+    return RouteEngine(networks=[], firewalls=firewalls, routing_paths=[])
+
+
+def test_scenario21_auto_single_hop():
+    eng = _auto_engine([Firewall("FW-1", inside_cidr="10.10.0.0/16",
+                                 outside_cidr="172.16.0.0/16")])
+    r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
+    assert r.status == "OK"
+    assert r.target_firewalls == "FW-1"
+    assert r.zone_path == "cidr:10.10.0.0/16>cidr:172.16.0.0/16"
+
+
+def test_scenario22_auto_multi_hop_shared_transit():
+    # 172.16/16 is FW-01.outside AND FW-02.inside -> one shared transit zone
+    # 10.20/16 is FW-02.outside AND FW-03.inside -> chains all three
+    eng = _auto_engine([
+        Firewall("SECUI-FW-01", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+        Firewall("SECUI-FW-02", inside_cidr="172.16.0.0/16", outside_cidr="10.20.0.0/16"),
+        Firewall("SECUI-FW-03", inside_cidr="10.20.0.0/16", outside_cidr="0.0.0.0/0"),
+    ])
+    r = eng.analyze("10.10.10.5", "8.8.8.8", "OUT")
+    assert r.status == "OK"
+    assert r.target_firewalls == "SECUI-FW-01;SECUI-FW-02;SECUI-FW-03"
+    assert r.firewall_path == "SECUI-FW-01>SECUI-FW-02>SECUI-FW-03"
+
+
+def test_scenario23_explicit_overrides_auto():
+    # explicit routing_paths present -> authoritative, inside/outside ignored
+    nets = [Network("n-int", "10.10.0.0/16", "internal"),
+            Network("n-srv", "172.16.1.0/24", "server")]
+    fws = [Firewall("FW-1", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16")]
+    rps = [RoutingPath("FW-1", "internal", "transit", path_order=1)]
+    eng = RouteEngine(networks=nets, firewalls=fws, routing_paths=rps)
+    r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
+    assert r.status == "NO_PATH"  # explicit graph authoritative; ignores CIDRs
+
+
+def test_scenario24_auto_cidr_canonicalized():
+    # non-aligned base / bare IP still canonicalize to the same zone
+    eng = _auto_engine([Firewall("FW-1", inside_cidr="10.10.5.7/16",
+                                 outside_cidr="172.16.0.0/16")])
+    r = eng.analyze("10.10.99.1", "172.16.1.10", "OUT")
+    assert r.status == "OK"
+    assert r.target_firewalls == "FW-1"
+    assert r.zone_path.startswith("cidr:10.10.0.0/16>")
+
+
+def test_scenario25_auto_one_side_only_no_path():
+    eng = _auto_engine([Firewall("FW-1", inside_cidr="10.10.0.0/16", outside_cidr="")])
+    r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
+    assert r.status in ("NO_PATH", "ZONE_UNRESOLVED")  # no outside -> no edge
+
+
+def test_scenario26_auto_equal_paths_multipath():
+    # two firewalls with identical inside/outside -> two equal one-hop paths
+    eng = _auto_engine([
+        Firewall("FW-A", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+        Firewall("FW-B", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+    ])
+    r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
+    assert r.status == "MULTI_PATH"
+    assert r.path_count == 2
+    assert r.target_firewalls == "FW-A"  # winner = lower path_order (row 1)
+
+
+def test_scenario27_auto_disabled_firewall_consumes_ordinal():
+    """A disabled firewall consumes a path_order ordinal but produces no edges."""
+    fws = [
+        Firewall("FW-OFF", enabled=False, inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+        Firewall("FW-A", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+        Firewall("FW-B", inside_cidr="10.10.0.0/16", outside_cidr="172.16.0.0/16"),
+    ]
+    eng = RouteEngine(networks=[], firewalls=fws, routing_paths=[])
+    r = eng.analyze("10.10.10.5", "172.16.1.10", "OUT")
+    assert r.status == "MULTI_PATH"
+    assert r.path_count == 2  # FW-OFF contributes nothing
+    assert r.target_firewalls == "FW-A"  # ordinal 2 < FW-B ordinal 3

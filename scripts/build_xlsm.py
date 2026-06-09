@@ -44,10 +44,10 @@ REQUESTS_HEADERS = [
 ]
 
 FIREWALLS = [
-    ["firewall_name", "vendor", "enabled", "comment"],
-    ["SECUI-FW-01", "SECUI", "Y", "내부-서버 구간"],
-    ["SECUI-FW-02", "SECUI", "Y", "중간-DMZ 구간"],
-    ["SECUI-FW-03", "SECUI", "Y", "DMZ-외부 구간"],
+    ["firewall_name", "vendor", "enabled", "inside_cidr", "outside_cidr", "comment"],
+    ["SECUI-FW-01", "SECUI", "Y", "10.10.0.0/16", "172.16.0.0/16", "\ub0b4\ubd80-\uc11c\ubc84 \uad6c\uac04"],
+    ["SECUI-FW-02", "SECUI", "Y", "172.16.0.0/16", "10.20.0.0/16", "\uc11c\ubc84-DMZ \uad6c\uac04"],
+    ["SECUI-FW-03", "SECUI", "Y", "10.20.0.0/16", "0.0.0.0/0", "DMZ-\uc678\ubd80 \uad6c\uac04"],
 ]
 
 NETWORK_DEFS = [
@@ -60,12 +60,13 @@ NETWORK_DEFS = [
     ["서버DMZ", "172.16.20.0/24", "dmz", "IDC", "Y"],
 ]
 
+# routing_paths and network_definitions are header-only/advanced by default.
+# With no explicit routing_paths rows the engine AUTO-DERIVES the graph from
+# firewalls.inside_cidr/outside_cidr (each CIDR is a zone; shared CIDRs chain
+# firewalls). network_definitions is only consulted in explicit routing_paths
+# mode, so it is kept for that advanced workflow but ignored in auto mode.
 ROUTING_PATHS = [
     ["firewall_name", "src_zone", "dst_zone", "ingress_if", "egress_if", "path_order", "enabled"],
-    ["SECUI-FW-01", "internal", "server", "eth1", "eth2", 10, "Y"],
-    ["SECUI-FW-01", "internal", "transit", "eth1", "eth3", 20, "Y"],
-    ["SECUI-FW-02", "transit", "dmz", "eth1", "eth2", 30, "Y"],
-    ["SECUI-FW-03", "dmz", "outside", "eth1", "eth2", 40, "Y"],
 ]
 
 SETTINGS = [
@@ -146,7 +147,7 @@ _WIDTHS = {
         "O": 16, "P": 30, "Q": 34, "R": 24, "S": 14, "T": 16, "U": 22,
         "V": 16, "W": 14, "X": 20,
     },
-    "firewalls": {"A": 16, "B": 10, "C": 9, "D": 28},
+    "firewalls": {"A": 16, "B": 10, "C": 9, "D": 16, "E": 16, "F": 24},
     "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
     "routing_paths": {"A": 16, "B": 12, "C": 12, "D": 12, "E": 12, "F": 12, "G": 9},
     "settings": {"A": 22, "B": 26, "C": 60},
@@ -189,6 +190,29 @@ def _write_rows(ws, rows):
         for c, val in enumerate(row, start=1):
             if val is not None:
                 ws.cell(row=r, column=c, value=val)
+
+
+_AUTO_RUN_BODY = (
+    "\r\n"
+    "Private Sub Workbook_Open()\r\n"
+    "    ' Auto-run on open: integrate + analyze the request folder.\r\n"
+    "    On Error GoTo AutoRunErr\r\n"
+    "    Application.Run \"FirewallPolicyAutomation.MergeFirewallRequestFolder\"\r\n"
+    "    Exit Sub\r\n"
+    "AutoRunErr:\r\n"
+    "    MsgBox \"\uc790\ub3d9 \ud1b5\ud569 \uc2e4\ud589 \uc911 \uc624\ub958: \" & Err.Description, vbExclamation\r\n"
+    "End Sub\r\n"
+)
+
+
+def _inject_auto_run(proj) -> None:
+    """Append Workbook_Open to the ThisWorkbook document module so the workbook
+    auto-integrates the request folder when opened (macros must be enabled)."""
+    m = proj.get_module("ThisWorkbook")
+    if "Workbook_Open" in m.source:
+        return
+    m.source = m.source.rstrip("\r\n") + _AUTO_RUN_BODY
+    m.dirty = True
 
 
 def _force_codepage_949(proj) -> None:
@@ -240,6 +264,8 @@ def main() -> int:
     # remove the default empty Module1 created by create_new
     if "Module1" in proj.module_names():
         proj.delete_module("Module1")
+    # auto-run on open: inject Workbook_Open into the ThisWorkbook document module
+    _inject_auto_run(proj)
     # CRITICAL: force the VBA project code page to 949 (Korean) so 한글 in the
     # module source—including FUNCTIONAL literals like headerMap("\ucd9c\ubc1c\uc9c0ip")—
     # survives. pyOpenVBA's create_new template hardcodes PROJECTCODEPAGE=1252 in
