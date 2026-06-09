@@ -276,6 +276,70 @@ def find_header_row(rows: list[list],
     raise RequestParseError(
         "\ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: \ucd9c\ubc1c\uc9c0IP/\ubaa9\uc801\uc9c0IP \uc5f4\uc774 \uc788\ub294 \ud589\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.")
 
+def sheet_header_score(rows: list[list],
+                       user_aliases: dict[str, str] | None = None) -> int:
+    """Score how header-like a sheet is, for cross-sheet comparison.
+
+    Returns the field count of the sheet's best header row, or -1 when no row
+    qualifies. Mirrors VBA SheetHeaderScore: same row scan as find_header_row but
+    keyed on field_count only (no has_no tie-break) for picking among sheets."""
+    best = -1
+    for r1 in range(1, 31):
+        field_count, has_no, has_ip = _row_header_signature(rows, r1, user_aliases)
+        if not has_ip:
+            continue
+        if field_count < 2 and not has_no:
+            continue
+        if field_count > best:
+            best = field_count
+    return best
+
+
+def find_request_sheet(sheets: list[list[list]],
+                       user_aliases: dict[str, str] | None = None) -> int:
+    """Pick the index of the sheet whose best header row scores highest.
+
+    `sheets` is a list of sheets, each a list[list] of cell values (a workbook).
+    Ties keep the leftmost (lowest index) sheet, so single-sheet and
+    first-sheet-wins forms behave exactly as before. Mirrors VBA FindRequestSheet.
+    Raises RequestParseError when NO sheet has a recognizable header row."""
+    best_index = -1
+    best_score = -1
+    for i, rows in enumerate(sheets):
+        score = sheet_header_score(rows, user_aliases)
+        if score > best_score:
+            best_score = score
+            best_index = i
+    if best_score >= 0 and best_index >= 0:
+        return best_index
+    raise RequestParseError(
+        "\ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: \ucd9c\ubc1c\uc9c0IP/\ubaa9\uc801\uc9c0IP \uc5f4\uc774 \uc788\ub294 \uc2dc\ud2b8\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.")
+
+
+def select_request_sheet(named_sheets: list,
+                         parse_sheet_name: str = "",
+                         user_aliases: dict[str, str] | None = None) -> int:
+    """Pick the sheet index honoring an explicit `parse_sheet` setting.
+
+    `named_sheets` is a list of (name, rows) tuples (a workbook with sheet
+    names). Mirrors VBA SelectRequestSheet:
+      - blank parse_sheet_name -> auto-detect via find_request_sheet (leftmost
+        tie, highest header score).
+      - non-empty -> select the FIRST sheet whose name equals parse_sheet_name
+        EXACTLY (no trim/case-fold/alias). Raise if no sheet has that name.
+        Raise if the named sheet exists but has no recognizable header row
+        (sheet_header_score < 0) -- an explicit choice never silently
+        falls back to another sheet."""
+    if not str(parse_sheet_name).strip():
+        return find_request_sheet([rows for _name, rows in named_sheets], user_aliases)
+    for i, (name, rows) in enumerate(named_sheets):
+        if name == parse_sheet_name:
+            if sheet_header_score(rows, user_aliases) < 0:
+                raise RequestParseError(
+                    "\ud30c\uc2f1 \ub300\uc0c1 \uc2dc\ud2b8\uc5d0\uc11c \ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: " + parse_sheet_name)
+            return i
+    raise RequestParseError(
+        "\ud30c\uc2f1 \ub300\uc0c1 \uc2dc\ud2b8\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: " + parse_sheet_name)
 
 def build_header_map(rows: list[list], header_row: int,
                      user_aliases: dict[str, str] | None = None) -> dict[str, int]:

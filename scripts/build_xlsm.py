@@ -75,7 +75,8 @@ ROUTING_PATHS = [
 SETTINGS = [
     ["key", "value", "설명"],
     ["request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다."],
-    ["parse_targets", "출발지IP;목적지IP", "적용대상방화벽 산정에 쓸 IP 컬럼(세미콜론 구분). IP 컬럼만 등록."],
+    ["parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다."],
+    ["parse_targets", "출발지IP;목적지IP", "(사용 안 함/예약) 현재 동작에 영향 없음. 출발지IP와 목적지IP는 항상 필수입니다."],
     ["route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE)."],
     ["header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소"],
 ]

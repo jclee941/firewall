@@ -186,7 +186,7 @@ def test_settings_schema_matches_vba_and_build(xlsm_path):
     s = wb["settings"]
     assert [s.cell(1, c).value for c in range(1, 4)] == ["key", "value", "\uc124\uba85"]
     keys = [s.cell(r, 1).value for r in range(2, s.max_row + 1)]
-    for required in ("request_folder", "parse_targets", "route_legacy_fallback", "header_alias"):
+    for required in ("request_folder", "parse_sheet", "parse_targets", "route_legacy_fallback", "header_alias"):
         assert required in keys, f"settings missing key {required}"
     # every seeded settings row must carry a non-empty 설명 (column 3)
     for r in range(2, s.max_row + 1):
@@ -349,17 +349,20 @@ def test_vba_split_address_list_collapses_spaces():
 
 
 def test_vba_find_header_row_is_content_based():
-    """Parity: VBA FindHeaderRow must detect the header row by FIELD CONTENT
-    (IP columns + field count), not by an exact 'no'/'번호' cell match."""
+    """Parity: VBA header detection must score by FIELD CONTENT (IP columns +
+    field count), not by an exact 'no'/'번호' cell match. The content scan lives
+    in BestHeaderRow, which FindHeaderRow and FindRequestSheet both delegate to."""
     src = open(VBA_POLICY, encoding="utf-8").read().replace("\r\n", "\n")
-    fn = src[src.find("Private Function FindHeaderRow"):]
+    fn = src[src.find("Private Function BestHeaderRow"):]
     fn = fn[:fn.find("\nEnd Function")]
     # must score by IP presence + field count, not the old exact-match anchor
-    assert "hasIp" in fn and "fieldCount" in fn, "FindHeaderRow must score by content"
+    assert "hasIp" in fn and "fieldCount" in fn, "BestHeaderRow must score by content"
     assert 'If valueText = "no" Or valueText = "번호" Then' not in fn, \
         "old exact-match 'no'/'번호' anchor must be gone"
     # IsFieldHeader helper must exist and enumerate the field headers
     assert "Private Function IsFieldHeader" in src
+    # FindRequestSheet must exist so data on a non-first sheet still parses
+    assert "Private Function FindRequestSheet" in src
 
 
 def test_vba_header_key_strips_punctuation():

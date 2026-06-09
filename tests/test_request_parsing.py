@@ -20,8 +20,10 @@ from request_parser_oracle import (  # noqa: E402
     RequestParseError,
     canonical_header_name,
     find_header_row,
+    find_request_sheet,
     header_key,
     parse_request_sheet,
+    select_request_sheet,
 )
 from route_oracle import (  # noqa: E402
     Firewall,
@@ -372,3 +374,141 @@ def test_user_alias_missing_without_setting_raises(tmp_path):
     p = _build_xlsx(tmp_path, "req7.xlsx", rows)
     with pytest.raises(RequestParseError):
         parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
+
+
+# --------------------------------------------------------------------------- #
+# E2E #8: 시트 자동탐지 — 데이터가 첫 시트가 아닌 양식도 파싱
+# --------------------------------------------------------------------------- #
+
+def _build_multisheet_xlsx(tmp_path, name, named_sheets):
+    """named_sheets: list of (title, rows). First entry becomes the active sheet."""
+    wb = openpyxl.Workbook()
+    first_title, first_rows = named_sheets[0]
+    ws = wb.active
+    ws.title = first_title
+    for r in first_rows:
+        ws.append(r)
+    for title, rows in named_sheets[1:]:
+        s = wb.create_sheet(title)
+        for r in rows:
+            s.append(r)
+    p = tmp_path / name
+    wb.save(p)
+    return p
+
+
+def _workbook_sheets(path):
+    wb = openpyxl.load_workbook(path)
+    return [[[c.value for c in row] for row in ws.iter_rows()] for ws in wb.worksheets]
+
+
+_REQUEST_ROWS = [
+    ["No", "출발지IP", "출발지", "목적지IP", "목적지",
+     "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고"],
+    [1, "10.10.10.5", "PC", "10.20.20.5", "DMZ", "TCP", "443",
+     "OUT", "연동", "2026-01-01", "2026-12-31", ""],
+]
+
+
+def test_find_request_sheet_picks_data_sheet_not_first():
+    # 첫 시트는 결재/안내문(헤더 없음), 둘째 시트에 실제 신청 테이블이 있다.
+    cover = [["방화벽 정책 신청서"], ["결재라인"], [""]]
+    sheets = [cover, _REQUEST_ROWS]
+    assert find_request_sheet(sheets) == 1
+
+
+def test_find_request_sheet_ties_keep_leftmost():
+    # 두 시트가 동일 점수면 왼쪽(첫) 시트가 이긴다 (기존 동작 보존).
+    sheets = [_REQUEST_ROWS, _REQUEST_ROWS]
+    assert find_request_sheet(sheets) == 0
+
+
+def test_find_request_sheet_raises_when_no_sheet_has_header():
+    sheets = [[["제목"], ["메모"]], [["a", "b"], [1, 2]]]
+    with pytest.raises(RequestParseError):
+        find_request_sheet(sheets)
+
+
+def test_multisheet_xlsx_data_on_second_sheet_parses(tmp_path, engine):
+    p = _build_multisheet_xlsx(
+        tmp_path, "req8.xlsx",
+        [("결재", [["방화벽 정책 신청서"], ["결재라인"]]),
+         ("신청내역", _REQUEST_ROWS)],
+    )
+    sheets = _workbook_sheets(p)
+    idx = find_request_sheet(sheets)
+    assert idx == 1
+    parsed = parse_request_sheet(sheets[idx])
+    assert len(parsed) == 1
+    r = parsed[0]
+    assert r["source_ip"] == "10.10.10.5"
+    assert r["dest_ip"] == "10.20.20.5"
+    res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+    assert res.status in ("OK", "MULTI_PATH")
+
+
+# --------------------------------------------------------------------------- #
+# E2E #9: 명시적 파싱 대상 시트 선택 (settings.parse_sheet)
+# --------------------------------------------------------------------------- #
+
+_HIGH_SCORE_ROWS = [
+    ["No", "출발지IP", "출발지", "목적지IP", "목적지",
+     "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고"],
+    [1, "10.10.10.9", "PC", "10.20.20.9", "SRV", "TCP", "80",
+     "OUT", "오답", "2026-01-01", "2026-12-31", ""],
+]
+
+
+def test_select_request_sheet_explicit_name_wins_over_auto_detect():
+    # '고득점' 시트가 더 높은 점수 + 좌측이지만, parse_sheet로 '신청내역' 명시 선택.
+    named = [
+        ("고득점", _HIGH_SCORE_ROWS),
+        ("신청내역", _REQUEST_ROWS),
+        ("표지", [["방화벽 신청서"]]),
+    ]
+    # auto-detect는 좌측(고득점, idx 0)을 고르지만, 명시명은 idx 1.
+    assert find_request_sheet([r for _n, r in named]) == 0
+    assert select_request_sheet(named, "신청내역") == 1
+
+
+def test_select_request_sheet_missing_name_raises_naming_it():
+    named = [("신청내역", _REQUEST_ROWS)]
+    with pytest.raises(RequestParseError) as ei:
+        select_request_sheet(named, "없는시트")
+    assert "없는시트" in str(ei.value)
+
+
+def test_select_request_sheet_blank_falls_back_to_auto_detect():
+    # 빈 parse_sheet -> auto-detect; 동점이면 좌측(첫) 시트.
+    named = [("첫시트", _REQUEST_ROWS), ("둘째시트", _REQUEST_ROWS)]
+    assert select_request_sheet(named, "") == 0
+    # 데이터가 둘째 시트에만 있으면 auto-detect가 둘째를 고름.
+    named2 = [("표지", [["제목"]]), ("신청내역", _REQUEST_ROWS)]
+    assert select_request_sheet(named2, "") == 1
+
+
+def test_select_request_sheet_named_sheet_without_header_raises():
+    # 명시한 시트가 존재하지만 헤더가 없으면 fallback 없이 에러.
+    named = [
+        ("표지", [["방화벽 신청서"], ["결재라인"]]),
+        ("신청내역", _REQUEST_ROWS),
+    ]
+    with pytest.raises(RequestParseError) as ei:
+        select_request_sheet(named, "표지")
+    assert "표지" in str(ei.value)
+
+
+def test_select_request_sheet_e2e_named_xlsx(tmp_path, engine):
+    p = _build_multisheet_xlsx(
+        tmp_path, "req9.xlsx",
+        [("고득점", _HIGH_SCORE_ROWS),
+         ("신청내역", _REQUEST_ROWS)],
+    )
+    wb = openpyxl.load_workbook(p)
+    named = [(ws.title, [[c.value for c in row] for row in ws.iter_rows()])
+             for ws in wb.worksheets]
+    idx = select_request_sheet(named, "신청내역")
+    assert idx == 1
+    parsed = parse_request_sheet(named[idx][1])
+    assert len(parsed) == 1
+    assert parsed[0]["source_ip"] == "10.10.10.5"

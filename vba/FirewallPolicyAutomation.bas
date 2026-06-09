@@ -33,6 +33,7 @@ Private Const COL_REQUEST_DOC_NO As Long = 23
 Private Const COL_REQUEST_FOLDER As Long = 24
 
 Private mUserAliases As Object
+Private mParseSheetName As String
 
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
@@ -81,6 +82,7 @@ Public Sub MergeFirewallRequestFolder()
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
     LoadUserAliases settingsSheet
+    mParseSheetName = SettingsValue(settingsSheet, "parse_sheet")
     folderPath = RequestFolderPath(settingsSheet)
     If Len(folderPath) = 0 Then Exit Sub
 
@@ -242,7 +244,7 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
 
     On Error GoTo OpenFailed
     Set sourceBook = Workbooks.Open(filePath, ReadOnly:=True, UpdateLinks:=False)
-    Set sourceSheet = sourceBook.Worksheets(1)
+    Set sourceSheet = SelectRequestSheet(sourceBook, mParseSheetName)
     headerRow = FindHeaderRow(sourceSheet)
     Set headerMap = BuildHeaderMap(sourceSheet, headerRow)
     ValidateRequiredHeaders headerMap, sourceFileName
@@ -303,6 +305,18 @@ End Function
 ' the row with the most recognized field headers, requiring an IP column, with a
 ' 'No' cell only as a tie-breaker. Mirrors tests/request_parser_oracle.py.
 Private Function FindHeaderRow(ByVal worksheet As Worksheet) As Long
+    Dim bestRow As Long
+    bestRow = BestHeaderRow(worksheet)
+    If bestRow > 0 Then
+        FindHeaderRow = bestRow
+        Exit Function
+    End If
+    Err.Raise vbObjectError + 1003, , "헤더 행을 찾을 수 없습니다: 출발지IP/목적지IP 열이 있는 행이 필요합니다."
+End Function
+
+' Non-raising header scan: returns the best header row, or 0 if none qualifies.
+' Shared by FindHeaderRow (raises) and FindRequestSheet (compares sheets).
+Private Function BestHeaderRow(ByVal worksheet As Worksheet) As Long
     Dim rowIndex As Long, columnIndex As Long, lastColumn As Long
     Dim key As String, canon As String
     Dim bestRow As Long, bestCount As Long, bestHasNo As Long
@@ -343,11 +357,91 @@ Private Function FindHeaderRow(ByVal worksheet As Worksheet) As Long
         End If
     Next rowIndex
 
-    If bestRow > 0 Then
-        FindHeaderRow = bestRow
+    BestHeaderRow = bestRow
+End Function
+
+' Score how header-like a sheet's best row is, for cross-sheet comparison.
+' Returns -1 when the sheet has no qualifying header row; otherwise the field
+' count of its best header row. Mirrors tests/request_parser_oracle.py.
+Private Function SheetHeaderScore(ByVal worksheet As Worksheet) As Long
+    Dim rowIndex As Long, columnIndex As Long, lastColumn As Long
+    Dim key As String, canon As String
+    Dim bestCount As Long
+    bestCount = -1
+
+    For rowIndex = 1 To 30
+        lastColumn = worksheet.Cells(rowIndex, worksheet.Columns.Count).End(xlToLeft).Column
+        Dim seen As Object
+        Set seen = CreateObject("Scripting.Dictionary")
+        Dim hasNo As Boolean, hasIp As Boolean
+        hasNo = False: hasIp = False
+        For columnIndex = 1 To lastColumn
+            key = HeaderKey(CStr(worksheet.Cells(rowIndex, columnIndex).Value))
+            If Len(key) > 0 Then
+                canon = CanonicalHeaderName(key)
+                If canon = key Then canon = UserAliasCanonical(key)
+                If canon = "no" Then
+                    hasNo = True
+                ElseIf IsFieldHeader(canon) Then
+                    If Not seen.Exists(canon) Then seen(canon) = True
+                    If canon = "출발지ip" Or canon = "목적지ip" Then hasIp = True
+                End If
+            End If
+        Next columnIndex
+        If hasIp Then
+            Dim fieldCount As Long
+            fieldCount = seen.Count
+            If fieldCount >= 2 Or hasNo Then
+                If fieldCount > bestCount Then bestCount = fieldCount
+            End If
+        End If
+    Next rowIndex
+
+    SheetHeaderScore = bestCount
+End Function
+
+' Pick the sheet whose best header row scores highest. Ties keep the leftmost
+' (lowest index) sheet so single-sheet forms behave exactly as before. Raises
+' the same 1003 error when NO sheet has a recognizable header.
+Private Function FindRequestSheet(ByVal sourceBook As Workbook) As Worksheet
+    Dim ws As Worksheet
+    Dim bestSheet As Worksheet
+    Dim bestScore As Long, score As Long
+    bestScore = -1
+    For Each ws In sourceBook.Worksheets
+        score = SheetHeaderScore(ws)
+        If score > bestScore Then
+            bestScore = score
+            Set bestSheet = ws
+        End If
+    Next ws
+    If bestScore >= 0 And Not bestSheet Is Nothing Then
+        Set FindRequestSheet = bestSheet
         Exit Function
     End If
-    Err.Raise vbObjectError + 1003, , "헤더 행을 찾을 수 없습니다: 출발지IP/목적지IP 열이 있는 행이 필요합니다."
+    Err.Raise vbObjectError + 1003, , "헤더 행을 찾을 수 없습니다: 출발지IP/목적지IP 열이 있는 시트가 필요합니다."
+End Function
+
+' Honor an explicit settings.parse_sheet choice. Mirrors oracle select_request_sheet:
+'   blank -> auto-detect (FindRequestSheet, leftmost tie / highest score)
+'   non-empty -> EXACT Worksheet.Name match (no trim/case-fold); raise if absent;
+'   raise if the named sheet has no recognizable header (never silently fall back).
+Private Function SelectRequestSheet(ByVal sourceBook As Workbook, ByVal parseSheetName As String) As Worksheet
+    Dim ws As Worksheet
+    If Len(Trim$(parseSheetName)) = 0 Then
+        Set SelectRequestSheet = FindRequestSheet(sourceBook)
+        Exit Function
+    End If
+    For Each ws In sourceBook.Worksheets
+        If ws.Name = parseSheetName Then
+            If SheetHeaderScore(ws) < 0 Then
+                Err.Raise vbObjectError + 1003, , "파싱 대상 시트에서 헤더 행을 찾을 수 없습니다: " & parseSheetName
+            End If
+            Set SelectRequestSheet = ws
+            Exit Function
+        End If
+    Next ws
+    Err.Raise vbObjectError + 1004, , "파싱 대상 시트를 찾을 수 없습니다: " & parseSheetName
 End Function
 
 Private Function BuildHeaderMap(ByVal worksheet As Worksheet, ByVal headerRow As Long) As Object
@@ -742,10 +836,26 @@ Private Sub WriteSettings(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
         worksheet.Range("A1:C1").Value = Array("key", "value", "설명")
         worksheet.Range("A2:C2").Value = Array("request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다.")
-        worksheet.Range("A3:C3").Value = Array("parse_targets", "출발지IP;목적지IP", "적용대상방화벽 산정에 쓸 IP 컬럼(세미콜론 구분). IP 컬럼만 등록.")
-        worksheet.Range("A4:C4").Value = Array("route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE).")
-        worksheet.Range("A5:C5").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
+        worksheet.Range("A3:C3").Value = Array("parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다.")
+        worksheet.Range("A4:C4").Value = Array("parse_targets", "출발지IP;목적지IP", "(사용 안 함/예약) 현재 동작에 영향 없음. 출발지IP와 목적지IP는 항상 필수입니다.")
+        worksheet.Range("A5:C5").Value = Array("route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE).")
+        worksheet.Range("A6:C6").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
+    Else
+        ' Upgrade an already-seeded settings sheet: add parse_sheet if it predates
+        ' this version, without disturbing existing rows/values.
+        EnsureSettingRow worksheet, "parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다."
     End If
+End Sub
+
+' Append a settings key (with value + 설명) only if it is not already present.
+' Case-insensitive key match, mirroring SettingsValue lookups.
+Private Sub EnsureSettingRow(ByVal worksheet As Worksheet, ByVal key As String, ByVal value As String, ByVal note As String)
+    Dim lastRow As Long, i As Long
+    lastRow = worksheet.Cells(worksheet.Rows.Count, 1).End(xlUp).Row
+    For i = 1 To lastRow
+        If LCase$(Trim$(CStr(worksheet.Cells(i, 1).Value))) = LCase$(key) Then Exit Sub
+    Next i
+    worksheet.Range("A" & (lastRow + 1) & ":C" & (lastRow + 1)).Value = Array(key, value, note)
 End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
