@@ -271,17 +271,17 @@ End Function
 Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String)
     requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
     requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
-    requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지ip")))
-    requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지")))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지ip")))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지")))
-    requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = UCase$(Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "프로토콜"))))
-    requestsSheet.Cells(targetRow, COL_PORT).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "포트")))
-    requestsSheet.Cells(targetRow, COL_DIRECTION).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "방향")))
-    requestsSheet.Cells(targetRow, COL_PURPOSE).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "용도")))
+    requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지ip"))
+    requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지"))
+    requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지ip"))
+    requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지"))
+    requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = UCase$(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "프로토콜")))
+    requestsSheet.Cells(targetRow, COL_PORT).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "포트"))
+    requestsSheet.Cells(targetRow, COL_DIRECTION).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "방향"))
+    requestsSheet.Cells(targetRow, COL_PURPOSE).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "용도"))
     requestsSheet.Cells(targetRow, COL_START_DATE).Value = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "시작일"))
     requestsSheet.Cells(targetRow, COL_END_DATE).Value = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "종료일"))
-    requestsSheet.Cells(targetRow, COL_NOTE).Value = Trim$(CStr(ReadOpt(sourceSheet, sourceRow, headerMap, "비고")))
+    requestsSheet.Cells(targetRow, COL_NOTE).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "비고"))
     Dim reqTeam As String, reqDocNo As String
     ParseRequestFolderName folderName, reqTeam, reqDocNo
     requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
@@ -492,6 +492,68 @@ Private Function ReadOpt(ByVal sourceSheet As Worksheet, ByVal r As Long, ByVal 
     Else
         ReadOpt = ""
     End If
+End Function
+
+' Normalize a LIST-like cell (IP/port/protocol): newlines/tabs/commas/space runs
+' become a single ';' so two values stay distinct (e.g. "80" + LF + "443" ->
+' "80;443"). Mirrors tests/request_parser_oracle.py _norm_list.
+Private Function NormalizeListCell(ByVal value As Variant) As String
+    Dim s As String
+    s = Trim$(CStr(value))
+    If Len(s) = 0 Then Exit Function
+    s = Replace(s, ChrW(160), " ")
+    s = Replace(s, vbCrLf, ";")
+    s = Replace(s, vbCr, ";")
+    s = Replace(s, vbLf, ";")
+    s = Replace(s, vbTab, ";")
+    s = Replace(s, ",", ";")
+    s = Replace(s, ChrW(65292), ";")   ' fullwidth comma
+    s = Replace(s, ChrW(65307), ";")   ' fullwidth semicolon
+    s = Replace(s, " ", ";")           ' list field: space is a delimiter
+    s = CollapseChar(s, ";")
+    NormalizeListCell = TrimChars(s, ";")
+End Function
+
+' Normalize a PROSE cell (name/purpose/note/direction): only newlines/tabs become
+' '; ' so descriptions don't visually concatenate; internal spaces are preserved.
+' Mirrors tests/request_parser_oracle.py _norm_text.
+Private Function NormalizeTextCell(ByVal value As Variant) As String
+    Dim s As String
+    s = Trim$(CStr(value))
+    If Len(s) = 0 Then Exit Function
+    s = Replace(s, ChrW(160), " ")
+    s = Replace(s, vbCrLf, "; ")
+    s = Replace(s, vbCr, "; ")
+    s = Replace(s, vbLf, "; ")
+    s = Replace(s, vbTab, "; ")
+    Do While InStr(s, "  ") > 0
+        s = Replace(s, "  ", " ")
+    Loop
+    Do While InStr(s, "; ; ") > 0
+        s = Replace(s, "; ; ", "; ")
+    Loop
+    NormalizeTextCell = TrimChars(Trim$(s), "; ")
+End Function
+
+' Collapse runs of a single character to one occurrence.
+Private Function CollapseChar(ByVal s As String, ByVal ch As String) As String
+    Do While InStr(s, ch & ch) > 0
+        s = Replace(s, ch & ch, ch)
+    Loop
+    CollapseChar = s
+End Function
+
+' Trim a leading/trailing delimiter token (single char or short string) from both ends.
+Private Function TrimChars(ByVal s As String, ByVal token As String) As String
+    Dim n As Long
+    n = Len(token)
+    Do While Len(s) >= n And Left$(s, n) = token
+        s = Mid$(s, n + 1)
+    Loop
+    Do While Len(s) >= n And Right$(s, n) = token
+        s = Left$(s, Len(s) - n)
+    Loop
+    TrimChars = s
 End Function
 
 Private Function FormatMetadataDate(ByVal value As Variant) As String

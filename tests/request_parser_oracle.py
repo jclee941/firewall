@@ -167,6 +167,39 @@ def _opt(rows: list[list], r1: int, hmap: dict, name: str):
     return _cell(rows, r1, col)
 
 
+import re as _re
+
+
+def _norm_list(value) -> str:
+    """Normalize a LIST-like cell (IP/port/protocol): newlines/tabs/commas/runs of
+    whitespace become a single ';' so two values stay distinct and don't visually
+    merge (e.g. '80\n443' -> '80;443'). An already-concatenated '80443' (no
+    separator) cannot be un-merged and is left as-is."""
+    if value is None:
+        return ""
+    s = str(value).replace("\u00a0", " ")
+    # any of CRLF/CR/LF/TAB/comma/fullwidth comma·semicolon -> ';'
+    s = _re.sub(r"[\r\n\t,\uff0c\uff1b]+", ";", s)
+    # runs of spaces between tokens -> ';' (list fields: space is a delimiter)
+    s = _re.sub(r" +", ";", s.strip())
+    # collapse repeated ';' and trim
+    s = _re.sub(r";+", ";", s).strip(";")
+    return s
+
+
+def _norm_text(value) -> str:
+    """Normalize a PROSE cell (name/purpose/note/direction): only newlines/tabs
+    become '; ' so descriptions don't visually concatenate; internal spaces are
+    preserved (e.g. 'HTTPS 업무 연동' stays intact)."""
+    if value is None:
+        return ""
+    s = str(value).replace("\u00a0", " ")
+    s = _re.sub(r"[\r\n\t]+", "; ", s)
+    s = _re.sub(r" +", " ", s).strip()
+    s = _re.sub(r"(; )+", "; ", s).strip("; ").strip()
+    return s
+
+
 def _last_column(rows: list[list], r1: int) -> int:
     # mirror End(xlToLeft): index (1-based) of the last non-empty cell in the row
     if r1 - 1 >= len(rows):
@@ -248,16 +281,16 @@ def parse_request_sheet(rows: list[list],
             continue
         out.append({
             "source_row": r1,
-            "source_ip": str(_opt(rows, r1, hmap, "출발지ip")).strip(),
-            "source_name": str(_opt(rows, r1, hmap, "출발지")).strip(),
-            "dest_ip": str(_opt(rows, r1, hmap, "목적지ip")).strip(),
-            "dest_name": str(_opt(rows, r1, hmap, "목적지")).strip(),
-            "protocol": str(_opt(rows, r1, hmap, "프로토콜")).strip().upper(),
-            "port": str(_opt(rows, r1, hmap, "포트")).strip(),
-            "direction": str(_opt(rows, r1, hmap, "방향")).strip(),
-            "purpose": str(_opt(rows, r1, hmap, "용도")).strip(),
+            "source_ip": _norm_list(_opt(rows, r1, hmap, "출발지ip")),
+            "source_name": _norm_text(_opt(rows, r1, hmap, "출발지")),
+            "dest_ip": _norm_list(_opt(rows, r1, hmap, "목적지ip")),
+            "dest_name": _norm_text(_opt(rows, r1, hmap, "목적지")),
+            "protocol": _norm_list(_opt(rows, r1, hmap, "프로토콜")).upper(),
+            "port": _norm_list(_opt(rows, r1, hmap, "포트")),
+            "direction": _norm_text(_opt(rows, r1, hmap, "방향")),
+            "purpose": _norm_text(_opt(rows, r1, hmap, "용도")),
             "start_date": _format_metadata_date(_opt(rows, r1, hmap, "시작일")),
             "end_date": _format_metadata_date(_opt(rows, r1, hmap, "종료일")),
-            "note": str(_opt(rows, r1, hmap, "비고")).strip(),
+            "note": _norm_text(_opt(rows, r1, hmap, "비고")),
         })
     return out
