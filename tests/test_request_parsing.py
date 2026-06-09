@@ -104,12 +104,30 @@ def test_find_header_row_detects_by_header_content_without_no():
     assert find_header_row(rows) == 1
 
 
+def test_no_label_variants_canonicalize_to_no():
+    """Each No-column label must canonicalize to 'no' BY ITSELF (not merely be
+    tolerated because sibling field headers exist). Guards the false-positive
+    where '#' was silently dropped yet the test still passed via other columns."""
+    for no_label in ("No", "No.", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88", "\uc21c \ubc88", "Seq", "#"):
+        assert canonical_header_name(header_key(no_label)) == "no", \
+            f"{no_label!r} does not canonicalize to 'no'"
+
+
 def test_find_header_row_no_variants_detected():
     """No-column spelling variants must all anchor the header row: No. 순번 연번
     '순 번' Seq # — previously only exact 'no'/'번호' worked."""
     for no_label in ("No.", "순번", "연번", "순 번", "Seq", "#"):
         rows = [[no_label, "출발지IP", "목적지IP", "프로토콜"]]
         assert find_header_row(rows) == 1, f"{no_label!r} not detected"
+
+
+def test_no_label_anchors_header_via_has_no_only():
+    """A No-label + ONE IP column (no other field header) must still anchor the
+    header row through the has_no path — proves the No-label itself is recognized,
+    since field_count would be only 1 here."""
+    for no_label in ("No", "No.", "\uc21c\ubc88", "#"):
+        rows = [[no_label, "\ucd9c\ubc1c\uc9c0IP"]]  # has_no + has_ip, field_count==1
+        assert find_header_row(rows) == 1, f"{no_label!r} did not anchor via has_no"
 
 
 def test_find_header_row_picks_best_scoring_row():

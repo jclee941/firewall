@@ -363,12 +363,24 @@ def test_vba_find_header_row_is_content_based():
 
 
 def test_vba_header_key_strips_punctuation():
-    """Parity: HeaderKey must strip decorating punctuation so 'No.' -> 'no'."""
+    """Parity: HeaderKey must strip decorating punctuation so 'No.' -> 'no', but
+    PRESERVE an all-punctuation token like '#' (return original when stripping
+    empties it) so it can match the '#' No-alias."""
     src = open(VBA_POLICY, encoding="utf-8").read().replace("\r\n", "\n")
     fn = src[src.find("Private Function HeaderKey"):]
     fn = fn[:fn.find("\nEnd Function")]
     assert "puncts" in fn and ("Left$(k" in fn or "Mid$(k" in fn), \
         "HeaderKey must strip leading/trailing punctuation (No. -> no)"
+    assert "original" in fn and "If Len(k) = 0 Then" in fn, \
+        "HeaderKey must keep all-punctuation tokens (e.g. '#') instead of emptying"
+
+
+def test_vba_canonical_no_includes_hash_alias():
+    """Parity: CanonicalHeaderName 'no' Case must include '#' so a '#' column
+    anchors the header row by itself."""
+    src = open(VBA_POLICY, encoding="utf-8").read().replace("\r\n", "\n")
+    line = next(l for l in src.split("\n") if "CanonicalHeaderName = \"no\"" in l)
+    assert '"#"' in line, "CanonicalHeaderName 'no' Case must include '#'"
 
 
 def test_workbook_open_does_not_swallow_errors():

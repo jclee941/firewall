@@ -42,8 +42,11 @@ def header_key(text) -> str:
     if text is None:
         return ""
     s = str(text).strip().replace(" ", "").lower()
-    s = s.strip(".#:/()[]-．。")
-    return s
+    # drop decorating punctuation (No. / No# / (No) / No:), but only if something
+    # remains — a token that is ALL punctuation (e.g. '#') is kept so it can match
+    # a symbolic alias instead of collapsing to an empty (ignored) key.
+    stripped = s.strip(".#:/()[]-．。")
+    return stripped if stripped else s
 
 
 # --------------------------------------------------------------------------- #
@@ -51,7 +54,7 @@ def header_key(text) -> str:
 # --------------------------------------------------------------------------- #
 
 _ALIASES = {
-    "no": ["no", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88", "seq", "\uc21c\uc11c", "\ud56d\ubc88", "\uc77c\ub828\ubc88\ud638", "\ubc88"],
+    "no": ["no", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88", "seq", "\uc21c\uc11c", "\ud56d\ubc88", "\uc77c\ub828\ubc88\ud638", "\ubc88", "#"],
     "\ucd9c\ubc1c\uc9c0ip": ["\ucd9c\ubc1c\uc9c0ip", "\ucd9c\ubc1cip", "sourceip", "srcip", "src",
                 "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c", "\uc1a1\uc2e0ip", "\uc6d0\ubcf8ip"],
     "\ucd9c\ubc1c\uc9c0": ["\ucd9c\ubc1c\uc9c0", "\ucd9c\ubc1c\uc9c0\uba85", "\ucd9c\ubc1c", "source", "srcname",

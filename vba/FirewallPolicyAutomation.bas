@@ -370,7 +370,7 @@ End Function
 
 Private Function CanonicalHeaderName(ByVal headerName As String) As String
     Select Case headerName
-        Case "no", "번호", "순번", "연번", "seq", "순서", "항번", "일련번호", "번": CanonicalHeaderName = "no"
+        Case "no", "번호", "순번", "연번", "seq", "순서", "항번", "일련번호", "번", "#": CanonicalHeaderName = "no"
         Case "출발지ip", "출발ip", "sourceip", "srcip", "src", "출발지주소", "송신ip", "원본ip": CanonicalHeaderName = "출발지ip"
         Case "출발지", "출발지명", "출발", "source", "srcname", "출발지설명", "출발지ip설명", "출발지ip설멸", "출발지설멸", "출발ip설명", "출발ip설멸", "출발지내용", "송신자", "src설명": CanonicalHeaderName = "출발지"
         Case "목적지ip", "목적ip", "destinationip", "dstip", "dst", "목적지주소", "수신ip": CanonicalHeaderName = "목적지ip"
@@ -755,8 +755,9 @@ Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String
-    Dim k As String
+    Dim k As String, original As String
     k = LCase$(Replace(Trim$(headerText), " ", ""))
+    original = k
     ' strip decorating punctuation (No. / No# / (No) / No:)
     Dim puncts As Variant, p As Variant
     puncts = Array(".", "#", ":", "/", "(", ")", "[", "]", "-", ChrW(65294), ChrW(12290))
@@ -772,7 +773,13 @@ Private Function HeaderKey(ByVal headerText As String) As String
             End If
         Next p
     Loop While changed
-    HeaderKey = k
+    ' a token that is ALL punctuation (e.g. '#') is kept so it can match a
+    ' symbolic alias instead of collapsing to an empty (ignored) key.
+    If Len(k) = 0 Then
+        HeaderKey = original
+    Else
+        HeaderKey = k
+    End If
 End Function
 
 Private Sub FormatFirewallsSheet(ByVal worksheet As Worksheet)
