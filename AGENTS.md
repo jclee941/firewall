@@ -26,7 +26,7 @@ When you change route logic: edit `route_oracle.py`, `FirewallRouteAnalysis.bas`
 pyOpenVBA injects both `.bas` modules into a real `vbaProject.bin` and deletes the default `Module1`; openpyxl then seeds all sheets while preserving the VBA. Seed data (FIREWALLS, NETWORK_DEFS, ROUTING_PATHS, SETTINGS, REQUESTS_HEADERS, etc.) lives as Python constants in `build_xlsm.py` and **must stay in sync with the VBA `Write*Headers` seeds** (incl. the `settings` sheet, which is `key,value,설명` in BOTH `build_xlsm.py` SETTINGS and VBA `WriteSettings`). `tests/test_xlsm_structure.py` locks per-sheet schemas and round-trips the injected VBA back against `vba/*.bas` (Korean comments are codepage-lossy on read, so that test compares ASCII-normalized source).
 
 CI/release assert structural invariants you must not silently break:
-- `requests` sheet has exactly **24 columns** (`wb["requests"].max_column == 24`).
+- `requests` sheet has exactly **25 columns** (`wb["requests"].max_column == 25`). Layout is a 2-row header band: row 1 = cosmetic group labels (출발지/목적지 merged over IP+설명), row 2 = canonical leaf headers, data from row 3.
 - Modules `FirewallPolicyAutomation` and `FirewallRouteAnalysis` present, `Module1` absent.
 - All 8 sheets present with exact header rows (asserted by `test_sheets_and_headers`).
 - Injected VBA module source must match `vba/*.bas` (`test_injected_vba_modules_match_source_files`).

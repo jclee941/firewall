@@ -59,7 +59,7 @@ jobs:
           need = {"requests", "firewalls", "network_definitions", "routing_paths",
                   "settings", "processing_log", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
-          assert wb["requests"].max_column == 24, wb["requests"].max_column
+          assert wb["requests"].max_column == 25, wb["requests"].max_column
           print("artifact OK:", p)
           PY
 

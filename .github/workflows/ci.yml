@@ -49,7 +49,7 @@ jobs:
           assert "Module1" not in mods
           g.close()
           wb = openpyxl.load_workbook(p, keep_vba=True)
-          assert wb["requests"].max_column == 24
+          assert wb["requests"].max_column == 25
           print("CI artifact OK")
           PY
 
