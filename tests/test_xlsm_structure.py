@@ -420,7 +420,7 @@ def _dv_for(ws, cell_ref):
 
 
 def test_ux_protocol_direction_dropdowns_on_requests(xlsm_path):
-    """requests 프로토콜(col8)·방향(col10) cells offer a dropdown list.
+    """requests 프로토콜(col11)·방향(col13) cells offer a dropdown list.
 
     Values must stay compatible with the route algorithm: 프로토콜 is display-only
     (TCP/UDP/ICMP); 방향 must be one of the values VBA NormalizeDirection accepts
@@ -429,13 +429,13 @@ def test_ux_protocol_direction_dropdowns_on_requests(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
 
-    proto = _dv_for(req, "H2")
-    assert proto is not None, "프로토콜(col8) has no data validation"
+    proto = _dv_for(req, "K2")
+    assert proto is not None, "프로토콜(col11) has no data validation"
     assert proto.type == "list"
     assert set(proto.formula1.strip('"').split(",")) >= {"TCP", "UDP", "ICMP"}
 
-    direction = _dv_for(req, "J2")
-    assert direction is not None, "방향(col10) has no data validation"
+    direction = _dv_for(req, "M2")
+    assert direction is not None, "방향(col13) has no data validation"
     assert direction.type == "list"
     assert set(direction.formula1.strip('"').split(",")) <= {"IN", "OUT", "BOTH", ""}
     assert {"IN", "OUT"} <= set(direction.formula1.strip('"').split(","))
@@ -485,12 +485,12 @@ def test_ux_settings_folder_cell_unlocked_when_protected(xlsm_path):
 
 def test_ux_required_input_empty_highlight(xlsm_path):
     """requests must carry conditional formatting that flags an empty required input
-    cell (출발지IP col4 / 목적지IP col6). Display-only; never touches values."""
+    cell (출발지IP col7 / 목적지IP col9). Display-only; never touches values."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
     cf_ranges = [str(rng) for rng in req.conditional_formatting]
     joined = " ".join(cf_ranges)
-    assert ("D" in joined and "F" in joined) or len(cf_ranges) >= 1, \
+    assert ("G" in joined and "I" in joined) or len(cf_ranges) >= 1, \
         "requests has no conditional formatting for empty required cells"
     assert any(req.conditional_formatting[rng] for rng in req.conditional_formatting), \
         "conditional formatting present but carries no rules"
@@ -501,11 +501,11 @@ def test_ux_header_comments_on_key_columns(xlsm_path):
     header cells (input hints), and the format must stay valid (no value drift)."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
-    assert req.cell(1, 4).comment is not None, "출발지IP header needs a hint comment"
-    assert req.cell(1, 6).comment is not None, "목적지IP header needs a hint comment"
+    assert req.cell(1, 7).comment is not None, "출발지IP header needs a hint comment"
+    assert req.cell(1, 9).comment is not None, "목적지IP header needs a hint comment"
     # comment must not alter the header value
-    assert req.cell(1, 4).value == "\ucd9c\ubc1c\uc9c0IP"
-    assert req.cell(1, 6).value == "\ubaa9\uc801\uc9c0IP"
+    assert req.cell(1, 7).value == "\ucd9c\ubc1c\uc9c0IP"
+    assert req.cell(1, 9).value == "\ubaa9\uc801\uc9c0IP"
 
 
 def test_ux_tab_colors_assigned(xlsm_path):

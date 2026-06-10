@@ -38,12 +38,12 @@ MODULES = [
 # ---- seed data (kept in sync with the VBA Write*Headers seeds) ------------- #
 
 REQUESTS_HEADERS = [
-    "source_file", "source_row", "target_firewalls",
+    "요청부서", "요청번호", "원본파일", "원본행", "검증상태",
+    "적용대상방화벽",
     "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향",
     "용도", "시작일", "종료일", "비고",
-    "validation_status", "validation_message", "match_details",
-    "firewall_path", "source_zone", "destination_zone", "zone_path",
-    "request_team", "request_doc_no", "request_folder",
+    "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로",
+    "매칭근거", "요청폴더",
 ]
 
 FIREWALLS = [
@@ -120,8 +120,8 @@ USAGE = [
 # Row 2: CIDR (대역) request, also multi-hop, proving CIDR input with zero setup.
 EXAMPLE_REQUEST_ROWS = [
     {
-        "source_file": "example.xlsx",
-        "source_row": 2,
+        "원본파일": "example.xlsx",
+        "원본행": 2,
         "출발지IP": "10.10.10.5",
         "출발지": "업무PC",
         "목적지IP": "10.20.20.5",
@@ -135,8 +135,8 @@ EXAMPLE_REQUEST_ROWS = [
         "비고": "build seed (single IP)",
     },
     {
-        "source_file": "example.xlsx",
-        "source_row": 3,
+        "원본파일": "example.xlsx",
+        "원본행": 3,
         "출발지IP": "10.10.10.0/24",
         "출발지": "업무PC대역",
         "목적지IP": "10.20.20.0/24",
@@ -163,10 +163,10 @@ _THIN_BOTTOM = Border(bottom=Side(style="thin", color="9DB2CE"))
 
 _WIDTHS = {
     "requests": {
-        "A": 18, "B": 9, "C": 26, "D": 16, "E": 12, "F": 16, "G": 12,
-        "H": 10, "I": 8, "J": 8, "K": 18, "L": 12, "M": 12, "N": 14,
-        "O": 16, "P": 30, "Q": 34, "R": 24, "S": 14, "T": 16, "U": 22,
-        "V": 16, "W": 14, "X": 20,
+        "A": 16, "B": 12, "C": 28, "D": 8, "E": 18, "F": 32, "G": 18,
+        "H": 16, "I": 18, "J": 16, "K": 10, "L": 14, "M": 10, "N": 28,
+        "O": 12, "P": 12, "Q": 24, "R": 40, "S": 34, "T": 18, "U": 18,
+        "V": 30, "W": 60, "X": 24,
     },
     "firewalls": {"A": 16, "B": 10, "C": 9, "D": 16, "E": 16, "F": 24},
     "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
@@ -183,7 +183,7 @@ _WIDTHS = {
 _FILTER_SHEETS = {"requests", "firewalls", "network_definitions",
                   "routing_paths", "processing_log"}
 
-_FREEZE = {"requests": "E2"}
+_FREEZE = {"requests": "G2"}
 
 
 def _style_sheet(ws, header_row: int = 1):
@@ -222,11 +222,11 @@ def _write_rows(ws, rows):
 _UX_LAST_ROW = 5000  # bound validations/CF so we never explode to 1048576 rows
 
 # requests column ordinals (1-indexed) we attach UX to
-_REQ_PROTOCOL_COL = 8     # 프로토콜
-_REQ_PORT_COL = 9         # 포트
-_REQ_DIRECTION_COL = 10   # 방향
-_REQ_SRC_IP_COL = 4       # 출발지IP (required)
-_REQ_DST_IP_COL = 6       # 목적지IP (required)
+_REQ_PROTOCOL_COL = 11    # 프로토콜
+_REQ_PORT_COL = 12        # 포트
+_REQ_DIRECTION_COL = 13   # 방향
+_REQ_SRC_IP_COL = 7       # 출발지IP (required)
+_REQ_DST_IP_COL = 9       # 목적지IP (required)
 
 # tab colors: input sheets vs result/log sheets (display navigation only)
 _TAB_COLORS = {

@@ -7,29 +7,29 @@ Private Const LOG_SHEET As String = "processing_log"
 Private Const NETWORK_SHEET As String = "network_definitions"
 Private Const ROUTING_SHEET As String = "routing_paths"
 
-Private Const COL_SOURCE_FILE As Long = 1
-Private Const COL_SOURCE_ROW As Long = 2
-Private Const COL_TARGET_FIREWALLS As Long = 3
-Private Const COL_SOURCE_IP As Long = 4
-Private Const COL_SOURCE_NAME As Long = 5
-Private Const COL_DESTINATION_IP As Long = 6
-Private Const COL_DESTINATION_NAME As Long = 7
-Private Const COL_PROTOCOL As Long = 8
-Private Const COL_PORT As Long = 9
-Private Const COL_DIRECTION As Long = 10
-Private Const COL_PURPOSE As Long = 11
-Private Const COL_START_DATE As Long = 12
-Private Const COL_END_DATE As Long = 13
-Private Const COL_NOTE As Long = 14
-Private Const COL_VALIDATION_STATUS As Long = 15
-Private Const COL_VALIDATION_MESSAGE As Long = 16
-Private Const COL_MATCH_DETAILS As Long = 17
-Private Const COL_FIREWALL_PATH As Long = 18
-Private Const COL_SOURCE_ZONE As Long = 19
-Private Const COL_DESTINATION_ZONE As Long = 20
-Private Const COL_ZONE_PATH As Long = 21
-Private Const COL_REQUEST_TEAM As Long = 22
-Private Const COL_REQUEST_DOC_NO As Long = 23
+Private Const COL_REQUEST_TEAM As Long = 1
+Private Const COL_REQUEST_DOC_NO As Long = 2
+Private Const COL_SOURCE_FILE As Long = 3
+Private Const COL_SOURCE_ROW As Long = 4
+Private Const COL_VALIDATION_STATUS As Long = 5
+Private Const COL_TARGET_FIREWALLS As Long = 6
+Private Const COL_SOURCE_IP As Long = 7
+Private Const COL_SOURCE_NAME As Long = 8
+Private Const COL_DESTINATION_IP As Long = 9
+Private Const COL_DESTINATION_NAME As Long = 10
+Private Const COL_PROTOCOL As Long = 11
+Private Const COL_PORT As Long = 12
+Private Const COL_DIRECTION As Long = 13
+Private Const COL_PURPOSE As Long = 14
+Private Const COL_START_DATE As Long = 15
+Private Const COL_END_DATE As Long = 16
+Private Const COL_NOTE As Long = 17
+Private Const COL_VALIDATION_MESSAGE As Long = 18
+Private Const COL_FIREWALL_PATH As Long = 19
+Private Const COL_SOURCE_ZONE As Long = 20
+Private Const COL_DESTINATION_ZONE As Long = 21
+Private Const COL_ZONE_PATH As Long = 22
+Private Const COL_MATCH_DETAILS As Long = 23
 Private Const COL_REQUEST_FOLDER As Long = 24
 
 Private mUserAliases As Object
@@ -819,7 +819,7 @@ Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
 End Function
 
 Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
-    worksheet.Range("A1:X1").Value = Array("source_file", "source_row", "target_firewalls", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "validation_status", "validation_message", "match_details", "firewall_path", "source_zone", "destination_zone", "zone_path", "request_team", "request_doc_no", "request_folder")
+    worksheet.Range("A1:X1").Value = Array("요청부서", "요청번호", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로", "매칭근거", "요청폴더")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
@@ -859,7 +859,11 @@ Private Sub EnsureSettingRow(ByVal worksheet As Worksheet, ByVal key As String, 
 End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:X").AutoFit
+    Dim widths As Variant, c As Long
+    widths = Array(16, 12, 28, 8, 18, 32, 18, 16, 18, 16, 10, 14, 10, 28, 12, 12, 24, 40, 34, 18, 18, 30, 60, 24)
+    For c = 1 To 24
+        worksheet.Columns(c).ColumnWidth = widths(c - 1)
+    Next c
     worksheet.Rows(1).Font.Bold = True
     worksheet.Range("A1:X1").AutoFilter
 End Sub

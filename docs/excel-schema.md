@@ -7,7 +7,7 @@
 - 신청 파일은 한 폴더에 모읍니다. 예: `incoming-requests/`
 - Excel VBA 매크로는 폴더 안의 `.xls`, `.xlsx`, `.xlsm` 파일을 읽습니다.
 - 임시 파일(`~$`로 시작하는 Excel 잠금 파일)은 무시합니다.
-- 각 행에는 `source_file`, `source_row`, `target_firewalls`, `firewall_path`, `validation_status`, `validation_message`, `match_details`, `source_zone`, `destination_zone`, `zone_path`, `request_team`, `request_doc_no`, `request_folder` 컬럼이 자동으로 채워집니다. (`requests` 시트는 총 24개 컬럼입니다.)
+- 각 행에는 운영자가 읽기 쉬운 순서로 컬럼이 배치됩니다(`requests` 시트는 총 24개 컬럼, 셀병합 없음). 수동 입력컬럼과 자동 채움 컬럼 모두 한글 표시명을 씁니다. 순서: `요청부서`, `요청번호`, `원본파일`, `원본행`, `검증상태`, `적용대상방화벽`, `출발지IP`, `출발지`, `목적지IP`, `목적지`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`, `검증메시지`, `방화벽경로`, `출발Zone`, `목적Zone`, `Zone경로`, `매칭근거`, `요청폴더`. (내부 VBA는 고정 컬럼 위치로 접근하므로 표시명을 임의로 바꾸지 마세요.)
 - `firewall_path`/`zone_path`는 hop을 `>`로 잇고(예: `FW-INTERNAL-01>FW-DMZ-01`, `INTERNAL>DMZ`), `target_firewalls`는 방화벽을 `;`로 잇습니다.
 - 결과는 매크로 통합 문서의 `requests` 시트에 저장됩니다.
 - 방화벽 매칭은 출발/도착 IP의 CIDR 겹침이 아니라 `network_definitions`의 zone과 `routing_paths`의 zone 그래프 BFS 최단경로로 결정합니다.

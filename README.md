@@ -124,23 +124,23 @@ zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니
 
 ## requests 시트 자동 입력 컬럼
 
-`MergeFirewallRequestFolder`와 `AnalyzeRequestRoutes`는 `requests` 시트에 아래 컬럼을 자동으로 채웁니다.
+`MergeFirewallRequestFolder`와 `AnalyzeRequestRoutes`는 `requests` 시트에 아래 컬럼을 자동으로 채웁니다. `requests` 시트는 운영자가 읽기 쉬운 순서로 24개 컬럼(셀병합 없음)을 배치하며, 모든 헤더는 한글 표시명입니다. 표시 순서: `요청부서`, `요청번호`, `원본파일`, `원본행`, `검증상태`, `적용대상방화벽`, `출발지IP`, `출발지`, `목적지IP`, `목적지`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`, `검증메시지`, `방화벽경로`, `출발Zone`, `목적Zone`, `Zone경로`, `매칭근거`, `요청폴더`.
 
 | 컬럼 | 설명 |
 |---|---|
-| `source_file` | 원본 신청서 파일명 |
-| `source_row` | 원본 신청서 행 번호 |
-| `target_firewalls` | 통과 방화벽 경로. hop 순서를 세미콜론(`;`)으로 연결한 값. `MULTI_PATH`일 때는 우선 경로의 hop 순서를 그대로 둠 |
-| `firewall_path` | 통과한 방화벽을 등장 순서대로 보존한 경로 문자열. hop은 `>`로 연결 (예: `FW-INTERNAL-01>FW-DMZ-01`) |
-| `validation_status` | 검증 상태 값 (아래 표 참고) |
-| `validation_message` | 검증 사유 또는 참고 메시지 |
-| `match_details` | zone 결정과 라우팅 hop 선택 근거를 사람이 읽을 수 있게 풀어 쓴 문자열 |
-| `source_zone` | 출발지 IP/CIDR에서 longest-prefix match로 결정된 출발 zone |
-| `destination_zone` | 목적지 IP/CIDR에서 longest-prefix match로 결정된 도착 zone |
-| `zone_path` | zone 그래프 BFS 최단경로의 zone 열. zone은 `>`로 연결 (예: `INTERNAL>DMZ>EXTERNAL`) |
-| `request_team` | 신청서 상위 폴더명의 팀/센터 부분 (예: `정보보호센터`) |
-| `request_doc_no` | 신청서 상위 폴더명의 문서번호 부분 (예: `1234`) |
-| `request_folder` | 신청서가 들어 있던 원본 폴더명 전체 |
+| `원본파일` | 원본 신청서 파일명 |
+| `원본행` | 원본 신청서 행 번호 |
+| `적용대상방화벽` | 통과 방화벽 경로. hop 순서를 세미콜론(`;`)으로 연결한 값. `MULTI_PATH`일 때는 우선 경로의 hop 순서를 그대로 둠 |
+| `방화벽경로` | 통과한 방화벽을 등장 순서대로 보존한 경로 문자열. hop은 `>`로 연결 (예: `FW-INTERNAL-01>FW-DMZ-01`) |
+| `검증상태` | 검증 상태 값 (아래 표 참고) |
+| `검증메시지` | 검증 사유 또는 참고 메시지 |
+| `매칭근거` | zone 결정과 라우팅 hop 선택 근거를 사람이 읽을 수 있게 풀어 쓴 문자열 |
+| `출발Zone` | 출발지 IP/CIDR에서 longest-prefix match로 결정된 출발 zone |
+| `목적Zone` | 목적지 IP/CIDR에서 longest-prefix match로 결정된 도착 zone |
+| `Zone경로` | zone 그래프 BFS 최단경로의 zone 열. zone은 `>`로 연결 (예: `INTERNAL>DMZ>EXTERNAL`) |
+| `요청부서` | 신청서 상위 폴더명의 팀/센터 부분 (예: `정보보호센터`) |
+| `요청번호` | 신청서 상위 폴더명의 문서번호 부분 (예: `1234`) |
+| `요청폴더` | 신청서가 들어 있던 원본 폴더명 전체 |
 
 ## 매칭 규칙 (적용대상방화벽 = 통과 방화벽 경로)
 
