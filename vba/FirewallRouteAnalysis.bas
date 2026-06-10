@@ -26,17 +26,19 @@ Private Const REQUESTS_SHEET As String = "requests"
 Private Const SETTINGS_SHEET As String = "settings"
 
 ' requests output columns (1-based). Inputs read by header name.
-Private Const RCOL_TARGET As Long = 6          ' 적용대상방화벽 (target_firewalls)
-Private Const RCOL_SOURCE_IP As Long = 7       ' 출발지IP
-Private Const RCOL_DEST_IP As Long = 9         ' 목적지IP
-Private Const RCOL_DIRECTION As Long = 13      ' 방향
-Private Const RCOL_VALID_STATUS As Long = 5    ' 검증상태 (validation_status)
-Private Const RCOL_VALID_MSG As Long = 18      ' 검증메시지 (validation_message)
-Private Const RCOL_MATCH As Long = 23          ' 매칭근거 (match_details)
-Private Const RCOL_FW_PATH As Long = 19        ' 방화벽경로 (firewall_path)
-Private Const RCOL_SRC_ZONE As Long = 20       ' 출발Zone (source_zone)
-Private Const RCOL_DST_ZONE As Long = 21       ' 목적Zone (destination_zone)
-Private Const RCOL_ZONE_PATH As Long = 22      ' Zone경로 (zone_path)
+' Layout: row 1 = group labels, row 2 = leaf headers, data from row 3.
+Private Const REQ_DATA_START_ROW As Long = 3
+Private Const RCOL_VALID_STATUS As Long = 6    ' 검증상태 (validation_status)
+Private Const RCOL_TARGET As Long = 7          ' 적용대상방화벽 (target_firewalls)
+Private Const RCOL_SOURCE_IP As Long = 8       ' 출발지IP
+Private Const RCOL_DEST_IP As Long = 10        ' 목적지IP
+Private Const RCOL_DIRECTION As Long = 14      ' 방향
+Private Const RCOL_VALID_MSG As Long = 19      ' 검증메시지 (validation_message)
+Private Const RCOL_FW_PATH As Long = 20        ' 방화벽경로 (firewall_path)
+Private Const RCOL_SRC_ZONE As Long = 21       ' 출발Zone (source_zone)
+Private Const RCOL_DST_ZONE As Long = 22       ' 목적Zone (destination_zone)
+Private Const RCOL_ZONE_PATH As Long = 23      ' Zone경로 (zone_path)
+Private Const RCOL_MATCH As Long = 24          ' 매칭근거 (match_details)
 
 ' module-level caches and graph state (rebuilt each run)
 Private mGraph As Object          ' src_zone -> Collection of edge dicts
@@ -65,7 +67,7 @@ Public Sub AnalyzeRequestRoutes()
     lastByDst = requestsSheet.Cells(requestsSheet.Rows.Count, RCOL_DEST_IP).End(xlUp).Row
     If lastByDst > lastRow Then lastRow = lastByDst
 
-    For rowIndex = 2 To lastRow
+    For rowIndex = REQ_DATA_START_ROW To lastRow
         srcIp = Trim$(CStr(requestsSheet.Cells(rowIndex, RCOL_SOURCE_IP).Value))
         dstIp = Trim$(CStr(requestsSheet.Cells(rowIndex, RCOL_DEST_IP).Value))
         direction = Trim$(CStr(requestsSheet.Cells(rowIndex, RCOL_DIRECTION).Value))

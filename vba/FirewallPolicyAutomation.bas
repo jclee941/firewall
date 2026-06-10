@@ -7,30 +7,37 @@ Private Const LOG_SHEET As String = "processing_log"
 Private Const NETWORK_SHEET As String = "network_definitions"
 Private Const ROUTING_SHEET As String = "routing_paths"
 
+' requests output layout: row 1 = cosmetic group labels, row 2 = leaf headers,
+' data starts at row 3. Keep these in sync with build_xlsm.py constants.
+Private Const REQ_HEADER_GROUP_ROW As Long = 1
+Private Const REQ_HEADER_ROW As Long = 2
+Private Const REQ_DATA_START_ROW As Long = 3
+Private Const REQ_LAST_COL As Long = 25
 Private Const COL_REQUEST_TEAM As Long = 1
 Private Const COL_REQUEST_DOC_NO As Long = 2
-Private Const COL_SOURCE_FILE As Long = 3
-Private Const COL_SOURCE_ROW As Long = 4
-Private Const COL_VALIDATION_STATUS As Long = 5
-Private Const COL_TARGET_FIREWALLS As Long = 6
-Private Const COL_SOURCE_IP As Long = 7
-Private Const COL_SOURCE_NAME As Long = 8
-Private Const COL_DESTINATION_IP As Long = 9
-Private Const COL_DESTINATION_NAME As Long = 10
-Private Const COL_PROTOCOL As Long = 11
-Private Const COL_PORT As Long = 12
-Private Const COL_DIRECTION As Long = 13
-Private Const COL_PURPOSE As Long = 14
-Private Const COL_START_DATE As Long = 15
-Private Const COL_END_DATE As Long = 16
-Private Const COL_NOTE As Long = 17
-Private Const COL_VALIDATION_MESSAGE As Long = 18
-Private Const COL_FIREWALL_PATH As Long = 19
-Private Const COL_SOURCE_ZONE As Long = 20
-Private Const COL_DESTINATION_ZONE As Long = 21
-Private Const COL_ZONE_PATH As Long = 22
-Private Const COL_MATCH_DETAILS As Long = 23
-Private Const COL_REQUEST_FOLDER As Long = 24
+Private Const COL_REQUEST_TITLE As Long = 3
+Private Const COL_SOURCE_FILE As Long = 4
+Private Const COL_SOURCE_ROW As Long = 5
+Private Const COL_VALIDATION_STATUS As Long = 6
+Private Const COL_TARGET_FIREWALLS As Long = 7
+Private Const COL_SOURCE_IP As Long = 8
+Private Const COL_SOURCE_NAME As Long = 9
+Private Const COL_DESTINATION_IP As Long = 10
+Private Const COL_DESTINATION_NAME As Long = 11
+Private Const COL_PROTOCOL As Long = 12
+Private Const COL_PORT As Long = 13
+Private Const COL_DIRECTION As Long = 14
+Private Const COL_PURPOSE As Long = 15
+Private Const COL_START_DATE As Long = 16
+Private Const COL_END_DATE As Long = 17
+Private Const COL_NOTE As Long = 18
+Private Const COL_VALIDATION_MESSAGE As Long = 19
+Private Const COL_FIREWALL_PATH As Long = 20
+Private Const COL_SOURCE_ZONE As Long = 21
+Private Const COL_DESTINATION_ZONE As Long = 22
+Private Const COL_ZONE_PATH As Long = 23
+Private Const COL_MATCH_DETAILS As Long = 24
+Private Const COL_REQUEST_FOLDER As Long = 25
 
 Private mUserAliases As Object
 Private mParseSheetName As String
@@ -86,9 +93,9 @@ Public Sub MergeFirewallRequestFolder()
     folderPath = RequestFolderPath(settingsSheet)
     If Len(folderPath) = 0 Then Exit Sub
 
-    requestsSheet.Rows("2:" & requestsSheet.Rows.Count).ClearContents
+    requestsSheet.Rows(REQ_DATA_START_ROW & ":" & requestsSheet.Rows.Count).Clear
     logSheet.Rows("2:" & logSheet.Rows.Count).ClearContents
-    nextRow = 2
+    nextRow = REQ_DATA_START_ROW
     mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, logSheet, nextRow)
     FormatRequestsSheet requestsSheet
     FormatLogSheet logSheet
@@ -176,10 +183,28 @@ Private Function MergeFolderTree(ByVal folderPath As String, ByVal folderName As
     ' 2) collect subfolder names first (Dir state is reused by MergeWorkbookFile)
     Set subFolders = CollectSubFolders(folderPath)
     For Each subName In subFolders
-        mergedCount = mergedCount + MergeFolderTree(folderPath & Application.PathSeparator & CStr(subName), CStr(subName), requestsSheet, firewallsSheet, logSheet, nextRow)
+        ' Carry the request-folder context downward: a nested attachment folder
+        ' (e.g. .../인프라시너지셀_2026-782_제목/첨부파일/) keeps the parsed
+        ' team_doc_title name instead of being parsed as '첨부파일'.
+        Dim childContext As String
+        childContext = ChildFolderContext(folderName, CStr(subName))
+        mergedCount = mergedCount + MergeFolderTree(folderPath & Application.PathSeparator & CStr(subName), childContext, requestsSheet, firewallsSheet, logSheet, nextRow)
     Next subName
 
     MergeFolderTree = mergedCount
+End Function
+
+Private Function ChildFolderContext(ByVal parentContext As String, ByVal childName As String) As String
+    ' If the child folder name itself looks like a request folder (has a non-empty
+    ' doc number after the first underscore), it becomes the new context; else the
+    ' parent's request-folder context is inherited.
+    Dim t As String, d As String, ti As String
+    ParseRequestFolderName childName, t, d, ti
+    If Len(d) > 0 Then
+        ChildFolderContext = childName
+    Else
+        ChildFolderContext = parentContext
+    End If
 End Function
 
 Private Function CollectSubFolders(ByVal folderPath As String) As Collection
@@ -213,21 +238,26 @@ Private Function FolderLeafName(ByVal folderPath As String) As String
     End If
 End Function
 
-Private Sub ParseRequestFolderName(ByVal folderName As String, ByRef team As String, ByRef docNo As String)
-    ' 정보보호센터_1234 -> team=정보보호센터, docNo=1234 (split on LAST underscore)
+Private Sub ParseRequestFolderName(ByVal folderName As String, ByRef team As String, ByRef docNo As String, ByRef title As String)
+    ' 인프라시너지셀_2026-782_제목 -> team=인프라시너지셀, docNo=2026-782, title=제목
+    ' Split on the FIRST two underscores; title keeps any later underscores.
     Dim s As String
     s = Trim$(folderName)
-    If Len(s) = 0 Then
-        team = "" : docNo = "" : Exit Sub
+    team = "" : docNo = "" : title = ""
+    If Len(s) = 0 Then Exit Sub
+    Dim first As Long, second As Long, rest As String
+    first = InStr(s, "_")
+    If first = 0 Then
+        team = Trim$(s) : Exit Sub
     End If
-    Dim idx As Long
-    idx = InStrRev(s, "_")
-    If idx = 0 Then
-        team = Trim$(s) : docNo = ""
-    Else
-        team = Trim$(Left$(s, idx - 1))
-        docNo = Trim$(Mid$(s, idx + 1))
+    team = Trim$(Left$(s, first - 1))
+    rest = Mid$(s, first + 1)
+    second = InStr(rest, "_")
+    If second = 0 Then
+        docNo = Trim$(rest) : Exit Sub
     End If
+    docNo = Trim$(Left$(rest, second - 1))
+    title = Trim$(Mid$(rest, second + 1))
 End Sub
 
 Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal folderName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
@@ -252,11 +282,14 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
     lastRow = SourceLastRow(sourceSheet, headerMap)
     For rowIndex = headerRow + 1 To lastRow
         If RequestSourceRowHasData(sourceSheet, rowIndex, headerMap) Then
-            CopyRequestRow sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName, folderName
-            nextRow = nextRow + 1
-            mergedCount = mergedCount + 1
+            ' CopyRequestRow explodes one source row into N rules and advances nextRow.
+            mergedCount = mergedCount + CopyRequestRow(sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName, folderName)
         End If
     Next rowIndex
+
+    ' Vertically merge the identity cells (요청부서/요청번호/제목) for this file's
+    ' contiguous output block so same-document rows are visually grouped.
+    MergeIdentityBlock requestsSheet, firstOutputRow, nextRow - 1
 
     sourceBook.Close SaveChanges:=False
     AppendProcessingLog logSheet, sourceFileName, "OK", mergedCount, "헤더 " & CStr(headerRow) & "행, " & OutputRowMessage(firstOutputRow, nextRow)
@@ -270,26 +303,88 @@ OpenFailed:
     MergeWorkbookFile = 0
 End Function
 
-Private Sub CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String)
-    requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
-    requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
-    requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지ip"))
-    requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지"))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지ip"))
-    requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지"))
-    requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = UCase$(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "프로토콜")))
-    requestsSheet.Cells(targetRow, COL_PORT).Value = NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "포트"))
-    requestsSheet.Cells(targetRow, COL_DIRECTION).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "방향"))
-    requestsSheet.Cells(targetRow, COL_PURPOSE).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "용도"))
-    requestsSheet.Cells(targetRow, COL_START_DATE).Value = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "시작일"))
-    requestsSheet.Cells(targetRow, COL_END_DATE).Value = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "종료일"))
-    requestsSheet.Cells(targetRow, COL_NOTE).Value = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "비고"))
-    Dim reqTeam As String, reqDocNo As String
-    ParseRequestFolderName folderName, reqTeam, reqDocNo
-    requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
-    requestsSheet.Cells(targetRow, COL_REQUEST_DOC_NO).Value = reqDocNo
-    requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
-    WriteRowValidation requestsSheet, targetRow
+Private Function CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByRef targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String) As Long
+    ' Explode one source request into the full 출발지IP × 목적지IP × 포트 product:
+    ' one firewall rule per output row. Mirrors request_parser_oracle.explode_request_row.
+    Dim srcs() As String, dsts() As String, ports() As String
+    srcs = SplitNormalizedList(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지ip")))
+    dsts = SplitNormalizedList(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지ip")))
+    ports = SplitNormalizedList(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "포트")))
+
+    Dim srcName As String, dstName As String, proto As String, direction As String
+    Dim purpose As String, startDate As String, endDate As String, note As String
+    srcName = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "출발지"))
+    dstName = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "목적지"))
+    proto = UCase$(NormalizeListCell(ReadOpt(sourceSheet, sourceRow, headerMap, "프로토콜")))
+    direction = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "방향"))
+    purpose = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "용도"))
+    startDate = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "시작일"))
+    endDate = FormatMetadataDate(ReadOpt(sourceSheet, sourceRow, headerMap, "종료일"))
+    note = NormalizeTextCell(ReadOpt(sourceSheet, sourceRow, headerMap, "비고"))
+
+    Dim reqTeam As String, reqDocNo As String, reqTitle As String
+    ParseRequestFolderName folderName, reqTeam, reqDocNo, reqTitle
+
+    Dim i As Long, j As Long, k As Long, written As Long
+    For i = LBound(srcs) To UBound(srcs)
+        For j = LBound(dsts) To UBound(dsts)
+            For k = LBound(ports) To UBound(ports)
+                requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
+                requestsSheet.Cells(targetRow, COL_REQUEST_DOC_NO).Value = reqDocNo
+                requestsSheet.Cells(targetRow, COL_REQUEST_TITLE).Value = reqTitle
+                requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
+                requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
+                requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = srcs(i)
+                requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = srcName
+                requestsSheet.Cells(targetRow, COL_DESTINATION_IP).Value = dsts(j)
+                requestsSheet.Cells(targetRow, COL_DESTINATION_NAME).Value = dstName
+                requestsSheet.Cells(targetRow, COL_PROTOCOL).Value = proto
+                requestsSheet.Cells(targetRow, COL_PORT).Value = ports(k)
+                requestsSheet.Cells(targetRow, COL_DIRECTION).Value = direction
+                requestsSheet.Cells(targetRow, COL_PURPOSE).Value = purpose
+                requestsSheet.Cells(targetRow, COL_START_DATE).Value = startDate
+                requestsSheet.Cells(targetRow, COL_END_DATE).Value = endDate
+                requestsSheet.Cells(targetRow, COL_NOTE).Value = note
+                requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
+                WriteRowValidation requestsSheet, targetRow
+                targetRow = targetRow + 1
+                written = written + 1
+            Next k
+        Next j
+    Next i
+    CopyRequestRow = written
+End Function
+
+' Split a ';'-normalized list into an array; an empty value yields a single
+' blank element so a missing field still produces one row. Mirrors
+' request_parser_oracle.split_list.
+Private Function SplitNormalizedList(ByVal normalized As String) As String()
+    Dim s As String
+    s = TrimChars(Trim$(CStr(normalized)), ";")
+    If Len(s) = 0 Then
+        Dim blank(0 To 0) As String
+        blank(0) = ""
+        SplitNormalizedList = blank
+        Exit Function
+    End If
+    SplitNormalizedList = Split(s, ";")
+End Function
+
+' Vertically merge the identity cells (요청부서/요청번호/제목) across a contiguous
+' output block [firstRow..lastRow] so same-document rows read as one group.
+' IP/포트 cells are NEVER merged (route + duplicate detection need per-row values).
+Private Sub MergeIdentityBlock(ByVal worksheet As Worksheet, ByVal firstRow As Long, ByVal lastRow As Long)
+    If lastRow <= firstRow Then Exit Sub
+    Dim cols As Variant, c As Variant
+    cols = Array(COL_REQUEST_TEAM, COL_REQUEST_DOC_NO, COL_REQUEST_TITLE)
+    Application.DisplayAlerts = False
+    For Each c In cols
+        With worksheet.Range(worksheet.Cells(firstRow, CLng(c)), worksheet.Cells(lastRow, CLng(c)))
+            .Merge
+            .VerticalAlignment = xlCenter
+        End With
+    Next c
+    Application.DisplayAlerts = True
 End Sub
 
 ' True if a canonical name is a recognized FIELD header (everything but 'no').
@@ -774,7 +869,7 @@ Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
 
     Set seen = CreateObject("Scripting.Dictionary")
     lastRow = worksheet.Cells(worksheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
-    For rowIndex = 2 To lastRow
+    For rowIndex = REQ_DATA_START_ROW To lastRow
         duplicateKey = RequestDuplicateKey(worksheet, rowIndex)
         If Len(duplicateKey) > 0 Then
             If seen.Exists(duplicateKey) Then
@@ -819,7 +914,15 @@ Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
 End Function
 
 Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
-    worksheet.Range("A1:X1").Value = Array("요청부서", "요청번호", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로", "매칭근거", "요청폴더")
+    ' Row 1: cosmetic group labels (출발지 over IP+설명, 목적지 over IP+설명).
+    ' Row 2: canonical leaf headers (25). Data starts at row 3.
+    worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP).Value = "출발지"
+    worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP).Value = "목적지"
+    Application.DisplayAlerts = False
+    worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_NAME)).Merge
+    worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_NAME)).Merge
+    Application.DisplayAlerts = True
+    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로", "매칭근거", "요청폴더")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
@@ -860,12 +963,13 @@ End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
     Dim widths As Variant, c As Long
-    widths = Array(16, 12, 28, 8, 18, 32, 18, 16, 18, 16, 10, 14, 10, 28, 12, 12, 24, 40, 34, 18, 18, 30, 60, 24)
-    For c = 1 To 24
+    widths = Array(16, 12, 20, 28, 8, 18, 32, 18, 16, 18, 16, 10, 14, 10, 28, 12, 12, 24, 40, 34, 18, 18, 30, 60, 24)
+    For c = 1 To REQ_LAST_COL
         worksheet.Columns(c).ColumnWidth = widths(c - 1)
     Next c
-    worksheet.Rows(1).Font.Bold = True
-    worksheet.Range("A1:X1").AutoFilter
+    worksheet.Rows(REQ_HEADER_GROUP_ROW).Font.Bold = True
+    worksheet.Rows(REQ_HEADER_ROW).Font.Bold = True
+    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).AutoFilter
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String

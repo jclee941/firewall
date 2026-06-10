@@ -412,3 +412,46 @@ def parse_request_sheet(rows: list[list],
             "note": _norm_text(_opt(rows, r1, hmap, "비고")),
         })
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Cartesian explode: one request row with multi-valued 출발지IP / 목적지IP / 포트
+# becomes the FULL product (출발지IP × 목적지IP × 포트), one firewall rule per row.
+# Mirrors VBA SplitNormalizedList + the explode loop in CopyRequestRow.
+# --------------------------------------------------------------------------- #
+
+def split_list(normalized: str) -> list[str]:
+    """Split a ';'-normalized list into tokens. An empty value yields [''] so a
+    field with no value still produces exactly one (blank) explode element and
+    the source row is never dropped. Mirrors VBA SplitNormalizedList."""
+    s = (normalized or "").strip(";")
+    if s == "":
+        return [""]
+    return [tok for tok in s.split(";") if tok != ""] or [""]
+
+
+def explode_request_row(row: dict) -> list[dict]:
+    """Expand a single parsed request dict into its 출발지IP × 목적지IP × 포트
+    cartesian product. All other fields repeat across exploded rows."""
+    srcs = split_list(row.get("source_ip", ""))
+    dsts = split_list(row.get("dest_ip", ""))
+    ports = split_list(row.get("port", ""))
+    out: list[dict] = []
+    for s in srcs:
+        for d in dsts:
+            for p in ports:
+                r = dict(row)
+                r["source_ip"] = s
+                r["dest_ip"] = d
+                r["port"] = p
+                out.append(r)
+    return out
+
+
+def parse_request_sheet_exploded(rows: list[list],
+                                 user_aliases: dict[str, str] | None = None) -> list[dict]:
+    """parse_request_sheet then explode each row into its cartesian product."""
+    out: list[dict] = []
+    for row in parse_request_sheet(rows, user_aliases):
+        out.extend(explode_request_row(row))
+    return out

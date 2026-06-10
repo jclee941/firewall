@@ -23,6 +23,10 @@ from request_parser_oracle import (  # noqa: E402
     find_request_sheet,
     header_key,
     parse_request_sheet,
+    parse_request_sheet_exploded,
+    explode_request_row,
+    split_list,
+    _norm_list,
     select_request_sheet,
 )
 from route_oracle import (  # noqa: E402
@@ -512,3 +516,58 @@ def test_select_request_sheet_e2e_named_xlsx(tmp_path, engine):
     parsed = parse_request_sheet(named[idx][1])
     assert len(parsed) == 1
     assert parsed[0]["source_ip"] == "10.10.10.5"
+
+
+# --------------------------------------------------------------------------- #
+# E2E #10: cartesian explode — multi-valued 출발지IP/목적지IP/포트 → N rules
+# --------------------------------------------------------------------------- #
+
+def test_explode_full_cartesian_product(tmp_path):
+    rows = [
+        ["No", "\ucd9c\ubc1c\uc9c0IP", "\ucd9c\ubc1c\uc9c0", "\ubaa9\uc801\uc9c0IP", "\ubaa9\uc801\uc9c0", "\ud504\ub85c\ud1a0\ucf5c", "\ud3ec\ud2b8",
+         "\ubc29\ud5a5", "\uc6a9\ub3c4", "\uc2dc\uc791\uc77c", "\uc885\ub8cc\uc77c", "\ube44\uace0"],
+        [1, "10.0.0.1;10.0.0.2", "PC", "20.0.0.1;20.0.0.2", "SRV", "TCP", "80;443",
+         "OUT", "\uc5f0\ub3d9", "2026-01-01", "2026-12-31", ""],
+    ]
+    p = _build_xlsx(tmp_path, "explode.xlsx", rows)
+    exploded = parse_request_sheet_exploded(_sheet_rows(openpyxl.load_workbook(p).active))
+    # 2 src × 2 dst × 2 port = 8 rules
+    assert len(exploded) == 8
+    # each exploded row holds SINGLE values
+    for r in exploded:
+        assert ";" not in r["source_ip"]
+        assert ";" not in r["dest_ip"]
+        assert ";" not in r["port"]
+    # the full product is present
+    triples = {(r["source_ip"], r["dest_ip"], r["port"]) for r in exploded}
+    assert triples == {
+        ("10.0.0.1", "20.0.0.1", "80"), ("10.0.0.1", "20.0.0.1", "443"),
+        ("10.0.0.1", "20.0.0.2", "80"), ("10.0.0.1", "20.0.0.2", "443"),
+        ("10.0.0.2", "20.0.0.1", "80"), ("10.0.0.2", "20.0.0.1", "443"),
+        ("10.0.0.2", "20.0.0.2", "80"), ("10.0.0.2", "20.0.0.2", "443"),
+    }
+    # repeated metadata survives
+    assert all(r["source_name"] == "PC" and r["protocol"] == "TCP" for r in exploded)
+
+
+def test_explode_missing_port_keeps_one_row():
+    # a field with no value yields exactly ONE blank element, row not dropped
+    row = {"source_ip": "10.0.0.1", "dest_ip": "20.0.0.1", "port": "",
+           "source_name": "PC", "protocol": "TCP"}
+    out = explode_request_row(row)
+    assert len(out) == 1
+    assert out[0]["port"] == ""
+    assert out[0]["source_ip"] == "10.0.0.1"
+
+
+def test_split_list_handles_blanks_and_trailing():
+    assert split_list("") == [""]
+    assert split_list("80;443") == ["80", "443"]
+    assert split_list(";80;;443;") == ["80", "443"]
+
+
+def test_norm_list_preserves_tilde_and_trims_trailing_semicolon():
+    # '~' (range marker) preserved; trailing ';' and spaces trimmed
+    assert _norm_list("10.0.0.1~10.0.0.5") == "10.0.0.1~10.0.0.5"
+    assert _norm_list(" 80 ;\n443 ; ") == "80;443"
+    assert _norm_list("10.177.124.0/22~ ") == "10.177.124.0/22~"

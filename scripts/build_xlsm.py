@@ -38,9 +38,9 @@ MODULES = [
 # ---- seed data (kept in sync with the VBA Write*Headers seeds) ------------- #
 
 REQUESTS_HEADERS = [
-    "요청부서", "요청번호", "원본파일", "원본행", "검증상태",
+    "요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태",
     "적용대상방화벽",
-    "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향",
+    "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향",
     "용도", "시작일", "종료일", "비고",
     "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로",
     "매칭근거", "요청폴더",
@@ -120,12 +120,15 @@ USAGE = [
 # Row 2: CIDR (대역) request, also multi-hop, proving CIDR input with zero setup.
 EXAMPLE_REQUEST_ROWS = [
     {
+        "요청부서": "정보보호센터",
+        "요청번호": "1234",
+        "제목": "웹서비스 연동",
         "원본파일": "example.xlsx",
         "원본행": 2,
         "출발지IP": "10.10.10.5",
-        "출발지": "업무PC",
+        "출발지설명": "업무PC",
         "목적지IP": "10.20.20.5",
-        "목적지": "DMZ서버",
+        "목적지설명": "DMZ서버",
         "프로토콜": "TCP",
         "포트": "443",
         "방향": "OUT",
@@ -135,12 +138,15 @@ EXAMPLE_REQUEST_ROWS = [
         "비고": "build seed (single IP)",
     },
     {
+        "요청부서": "정보보호센터",
+        "요청번호": "1234",
+        "제목": "웹서비스 연동",
         "원본파일": "example.xlsx",
         "원본행": 3,
         "출발지IP": "10.10.10.0/24",
-        "출발지": "업무PC대역",
+        "출발지설명": "업무PC대역",
         "목적지IP": "10.20.20.0/24",
-        "목적지": "DMZ대역",
+        "목적지설명": "DMZ대역",
         "프로토콜": "TCP",
         "포트": "443",
         "방향": "OUT",
@@ -163,10 +169,10 @@ _THIN_BOTTOM = Border(bottom=Side(style="thin", color="9DB2CE"))
 
 _WIDTHS = {
     "requests": {
-        "A": 16, "B": 12, "C": 28, "D": 8, "E": 18, "F": 32, "G": 18,
-        "H": 16, "I": 18, "J": 16, "K": 10, "L": 14, "M": 10, "N": 28,
-        "O": 12, "P": 12, "Q": 24, "R": 40, "S": 34, "T": 18, "U": 18,
-        "V": 30, "W": 60, "X": 24,
+        "A": 16, "B": 12, "C": 20, "D": 28, "E": 8, "F": 18, "G": 32,
+        "H": 18, "I": 16, "J": 18, "K": 16, "L": 10, "M": 14, "N": 10,
+        "O": 28, "P": 12, "Q": 12, "R": 24, "S": 40, "T": 34, "U": 18,
+        "V": 18, "W": 30, "X": 60, "Y": 24,
     },
     "firewalls": {"A": 16, "B": 10, "C": 9, "D": 16, "E": 16, "F": 24},
     "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
@@ -183,7 +189,12 @@ _WIDTHS = {
 _FILTER_SHEETS = {"requests", "firewalls", "network_definitions",
                   "routing_paths", "processing_log"}
 
-_FREEZE = {"requests": "G2"}
+# requests output layout: row 1 = cosmetic group labels, row 2 = leaf headers,
+# data from row 3. Mirror of VBA REQ_HEADER_GROUP_ROW / REQ_HEADER_ROW / REQ_DATA_START_ROW.
+_REQ_HEADER_GROUP_ROW = 1
+_REQ_HEADER_ROW = 2
+_REQ_DATA_START_ROW = 3
+_FREEZE = {"requests": "H3"}
 
 
 def _style_sheet(ws, header_row: int = 1):
@@ -222,11 +233,11 @@ def _write_rows(ws, rows):
 _UX_LAST_ROW = 5000  # bound validations/CF so we never explode to 1048576 rows
 
 # requests column ordinals (1-indexed) we attach UX to
-_REQ_PROTOCOL_COL = 11    # 프로토콜
-_REQ_PORT_COL = 12        # 포트
-_REQ_DIRECTION_COL = 13   # 방향
-_REQ_SRC_IP_COL = 7       # 출발지IP (required)
-_REQ_DST_IP_COL = 9       # 목적지IP (required)
+_REQ_PROTOCOL_COL = 12    # 프로토콜
+_REQ_PORT_COL = 13        # 포트
+_REQ_DIRECTION_COL = 14   # 방향
+_REQ_SRC_IP_COL = 8       # 출발지IP (required)
+_REQ_DST_IP_COL = 10      # 목적지IP (required)
 
 # tab colors: input sheets vs result/log sheets (display navigation only)
 _TAB_COLORS = {
@@ -252,15 +263,15 @@ _PROTECT_SHEETS = {
 _NO_PROTECT_SHEETS = {"requests", "processing_log"}
 
 
-def _add_list_dv(ws, col_letter, values, *, allow_blank=True):
-    """Attach a bounded list dropdown to col_letter rows 2.._UX_LAST_ROW."""
+def _add_list_dv(ws, col_letter, values, *, allow_blank=True, start_row=2):
+    """Attach a bounded list dropdown to col_letter rows start_row.._UX_LAST_ROW."""
     formula = '"' + ",".join(values) + '"'
     dv = DataValidation(type="list", formula1=formula, allow_blank=allow_blank)
     dv.error = "목록에서 값을 선택하세요."
     dv.errorTitle = "잘못된 입력"
     dv.prompt = "드롭다운에서 선택"
     ws.add_data_validation(dv)
-    dv.add(f"{col_letter}2:{col_letter}{_UX_LAST_ROW}")
+    dv.add(f"{col_letter}{start_row}:{col_letter}{_UX_LAST_ROW}")
     return dv
 
 
@@ -274,12 +285,12 @@ def _apply_ux(wb) -> None:
 
     req = wb["requests"]
 
-    # 2) dropdowns on requests (프로토콜 / 방향) ---------------------------------- #
+    # 2) dropdowns on requests (프로토콜 / 방향) data starts at row 3 ------------- #
     _add_list_dv(req, get_column_letter(_REQ_PROTOCOL_COL),
-                 ["TCP", "UDP", "ICMP"])
+                 ["TCP", "UDP", "ICMP"], start_row=_REQ_DATA_START_ROW)
     # 방향 values must all be accepted by VBA NormalizeDirection (IN/OUT/BOTH)
     _add_list_dv(req, get_column_letter(_REQ_DIRECTION_COL),
-                 ["IN", "OUT", "BOTH"])
+                 ["IN", "OUT", "BOTH"], start_row=_REQ_DATA_START_ROW)
 
     # mirror the demo dropdowns onto sample-request-format (cols G=7,I=9)
     if "sample-request-format" in wb.sheetnames:
@@ -294,13 +305,13 @@ def _apply_ux(wb) -> None:
         _add_list_dv(wb["network_definitions"], "E", ["Y", "N"])
 
     # 4) conditional format: flag empty required IP cells -------------------- #
-    src_letter = get_column_letter(_REQ_SRC_IP_COL)  # D
-    dst_letter = get_column_letter(_REQ_DST_IP_COL)  # F
+    src_letter = get_column_letter(_REQ_SRC_IP_COL)  # H
+    dst_letter = get_column_letter(_REQ_DST_IP_COL)  # J
     for letter in (src_letter, dst_letter):
-        rng = f"{letter}2:{letter}{_UX_LAST_ROW}"
+        rng = f"{letter}{_REQ_DATA_START_ROW}:{letter}{_UX_LAST_ROW}"
         # highlight when the cell is blank (display hint, never edits a value)
         rule = FormulaRule(
-            formula=[f'ISBLANK({letter}2)'],
+            formula=[f'ISBLANK({letter}{_REQ_DATA_START_ROW})'],
             fill=_EMPTY_REQUIRED_FILL,
             stopIfTrue=False,
         )
@@ -317,8 +328,8 @@ def _apply_ux(wb) -> None:
         "예: 172.16.1.10 또는 172.16.1.0/24\n"
         "여러 개는 ; 로 구분"
     )
-    req.cell(1, _REQ_SRC_IP_COL).comment = Comment(_src_hint, "firewall-automation")
-    req.cell(1, _REQ_DST_IP_COL).comment = Comment(_dst_hint, "firewall-automation")
+    req.cell(_REQ_HEADER_ROW, _REQ_SRC_IP_COL).comment = Comment(_src_hint, "firewall-automation")
+    req.cell(_REQ_HEADER_ROW, _REQ_DST_IP_COL).comment = Comment(_dst_hint, "firewall-automation")
 
     # 6) sheet protection (operator-input sheets only) ---------------------- #
     #    requests / processing_log are macro-written -> never protected.
@@ -434,14 +445,31 @@ def main() -> int:
     # repurpose the default sheet as 'requests'
     base = wb[wb.sheetnames[0]]
     base.title = "requests"
-    for c, h in enumerate(REQUESTS_HEADERS, start=1):
-        base.cell(row=1, column=c, value=h)
-    # seeded example requests (single IP + CIDR), one per row starting at row 2
+    # Row 1: cosmetic group labels (출발지 over IP+설명, 목적지 over IP+설명).
+    # Row 2: canonical leaf headers. Data from row 3. Mirrors VBA WriteRequestHeaders.
     col_index = {h: i + 1 for i, h in enumerate(REQUESTS_HEADERS)}
-    for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=2):
+    src_ip_col = col_index["출발지IP"]
+    src_desc_col = col_index["출발지설명"]
+    dst_ip_col = col_index["목적지IP"]
+    dst_desc_col = col_index["목적지설명"]
+    base.cell(row=_REQ_HEADER_GROUP_ROW, column=src_ip_col, value="출발지")
+    base.cell(row=_REQ_HEADER_GROUP_ROW, column=dst_ip_col, value="목적지")
+    from openpyxl.utils import get_column_letter as _gcl
+    base.merge_cells(f"{_gcl(src_ip_col)}{_REQ_HEADER_GROUP_ROW}:{_gcl(src_desc_col)}{_REQ_HEADER_GROUP_ROW}")
+    base.merge_cells(f"{_gcl(dst_ip_col)}{_REQ_HEADER_GROUP_ROW}:{_gcl(dst_desc_col)}{_REQ_HEADER_GROUP_ROW}")
+    for c, h in enumerate(REQUESTS_HEADERS, start=1):
+        base.cell(row=_REQ_HEADER_ROW, column=c, value=h)
+    # seeded example requests (single IP + CIDR), one per row starting at data row
+    for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=_REQ_DATA_START_ROW):
         for key, val in example.items():
             base.cell(row=r, column=col_index[key], value=val)
-    _style_sheet(base)
+    # style the group label row too, then the leaf header row
+    for c in (src_ip_col, dst_ip_col):
+        gc = base.cell(row=_REQ_HEADER_GROUP_ROW, column=c)
+        gc.font = _HEADER_FONT
+        gc.fill = _HEADER_FILL
+        gc.alignment = _HEADER_ALIGN
+    _style_sheet(base, header_row=_REQ_HEADER_ROW)
 
     def add(title, rows):
         ws = wb.create_sheet(title)
