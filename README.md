@@ -263,7 +263,7 @@ zone 사이의 라우팅 간선입니다. 한 행은 한 방향의 한 hop입니
 ### 빌드 / 릴리즈 자동화
 
 - 로컬 빌드: `./.venv/bin/python scripts/build_xlsm.py` → `dist/firewall-policy-automation.xlsm` 생성 (Excel/PowerShell 불필요, Linux에서 동작).
-- CI(`.github/workflows/ci.yml`): master/main push와 PR마다 의존성 설치 → `pytest` → 빌드 → 산출물 구조 검증.
+- CI(`.github/workflows/ci.yml`): master push와 PR마다 의존성 설치 → `pytest` → 빌드 → 산출물 구조 검증.
 - 릴리즈(`.github/workflows/release.yml`): `v*` 태그를 push하면 자동으로 빌드·테스트·검증 후 GitHub 릴리즈를 생성하고 `.xlsm`을 첨부합니다.
 
 ```bash
