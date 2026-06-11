@@ -680,14 +680,14 @@ Private Function SourceLastRow(ByVal sourceSheet As Worksheet, ByVal headerMap A
     ' Merge-aware last-row detection. Raw End(xlUp) on the IP columns can stop
     ' short when 출발지IP/목적지IP are vertically merged (Excel stores the value
     ' only in the merge top-left). So we start from the sheet's real used range
-    ' and walk back to the last row that ReadDataCell sees as having IP data.
+    ' and walk back to the last logical row, excluding pure merge-continuation
+    ' rows whose values all come from top-left merged cells.
     Dim usedLast As Long
     Dim r As Long
 
     usedLast = sourceSheet.UsedRange.Row + sourceSheet.UsedRange.Rows.Count - 1
     For r = usedLast To 1 Step -1
-        If Len(Trim$(CStr(ReadDataCell(sourceSheet, r, headerMap("출발지ip"))))) > 0 _
-           Or Len(Trim$(CStr(ReadDataCell(sourceSheet, r, headerMap("목적지ip"))))) > 0 Then
+        If RequestSourceRowHasData(sourceSheet, r, headerMap) Then
             SourceLastRow = r
             Exit Function
         End If
@@ -696,8 +696,39 @@ Private Function SourceLastRow(ByVal sourceSheet As Worksheet, ByVal headerMap A
 End Function
 
 Private Function RequestSourceRowHasData(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object) As Boolean
-    RequestSourceRowHasData = Len(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("출발지ip"))))) > 0 Or _
+    Dim hasIp As Boolean
+    hasIp = Len(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("출발지ip"))))) > 0 Or _
         Len(Trim$(CStr(ReadDataCell(sourceSheet, sourceRow, headerMap("목적지ip"))))) > 0
+    RequestSourceRowHasData = hasIp And RowHasOwnRequestData(sourceSheet, sourceRow, headerMap)
+End Function
+
+Private Function RowHasOwnRequestData(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object) As Boolean
+    ' A lower row inside a vertically merged request block has visible values via
+    ' ReadDataCell, but those values belong to the top-left row. Treat it as a
+    ' continuation unless at least one request field has its own cell value.
+    Dim key As Variant
+    Dim cell As Range
+    For Each key In headerMap.Keys
+        If CStr(key) <> "no" Then
+            Set cell = sourceSheet.Cells(sourceRow, CLng(headerMap(key)))
+            If CellHasOwnRequestValue(cell) Then
+                RowHasOwnRequestData = True
+                Exit Function
+            End If
+        End If
+    Next key
+End Function
+
+Private Function CellHasOwnRequestValue(ByVal cell As Range) As Boolean
+    If cell.MergeCells Then
+        If cell.MergeArea.Row <> cell.Row Or cell.MergeArea.Column <> cell.Column Then
+            CellHasOwnRequestValue = False
+            Exit Function
+        End If
+        CellHasOwnRequestValue = Len(Trim$(CStr(cell.MergeArea.Cells(1, 1).Value))) > 0
+    Else
+        CellHasOwnRequestValue = Len(Trim$(CStr(cell.Value))) > 0
+    End If
 End Function
 
 Private Function ReadDataCell(ByVal sourceSheet As Worksheet, ByVal r As Long, ByVal c As Long) As Variant

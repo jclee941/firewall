@@ -129,7 +129,8 @@ def sheet_to_filled_rows(ws, user_aliases: dict[str, str] | None = None) -> list
     data cells via .MergeArea.Cells(1,1).Value when .MergeCells is True.
     """
     # snapshot raw values (merged non-top-left cells are None here)
-    rows = [[c.value for c in row] for row in ws.iter_rows()]
+    raw_rows = [[c.value for c in row] for row in ws.iter_rows()]
+    rows = [list(row) for row in raw_rows]
     # locate header row on the RAW grid (No/번호 lives in the merge top-left)
     try:
         header_row = find_header_row(rows, user_aliases)
@@ -151,7 +152,31 @@ def sheet_to_filled_rows(ws, user_aliases: dict[str, str] | None = None) -> list
                     rows[ri].append(None)
                 if rows[ri][ci] is None:
                     rows[ri][ci] = top
+    try:
+        hmap = build_header_map(raw_rows, header_row, user_aliases)
+    except RequestParseError:
+        return rows
+    for r1 in range(header_row + 1, len(rows) + 1):
+        if _is_merged_continuation_row(ws, r1) and not _row_has_own_request_value(raw_rows, r1, hmap):
+            rows[r1 - 1] = [None for _ in rows[r1 - 1]]
     return rows
+
+
+def _is_merged_continuation_row(ws, r1: int) -> bool:
+    for rng in list(ws.merged_cells.ranges):
+        if rng.min_row < r1 <= rng.max_row:
+            return True
+    return False
+
+
+def _row_has_own_request_value(rows: list[list[object | None]], r1: int, hmap: dict[str, int]) -> bool:
+    for name, col in hmap.items():
+        if name == "no":
+            continue
+        value = _cell(rows, r1, col)
+        if str(value).strip() != "":
+            return True
+    return False
 
 
 def _cell(rows: list[list], r1: int, c1: int):

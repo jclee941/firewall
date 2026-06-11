@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from request_parser_oracle import parse_request_sheet  # noqa: E402
+from request_parser_oracle import parse_request_sheet, parse_request_sheet_exploded  # noqa: E402
 from route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
 
 
@@ -173,6 +173,36 @@ def test_both_ip_vertical_merge_lower_row_kept(tmp_path, engine):
     assert parsed[0]["port"] == "443" and parsed[1]["port"] == "8443"
     # 둘 다 동일 경로 (internal -> transit -> dmz)
     for r in parsed:
+        res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+        assert res.status == "OK"
+        assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
+
+
+def test_multiline_port_in_merged_cell_explodes_once(tmp_path, engine):
+    def build(ws):
+        hdr = ["No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜",
+               "포트", "방향", "용도", "시작일", "종료일", "비고"]
+        for i, h in enumerate(hdr, 1):
+            ws.cell(1, i, h)
+        ws.cell(2, 1, 1); ws.merge_cells("A2:A3")
+        ws.cell(2, 2, "10.10.10.5"); ws.merge_cells("B2:B3")
+        ws.cell(2, 3, "PC"); ws.merge_cells("C2:C3")
+        ws.cell(2, 4, "10.20.20.5"); ws.merge_cells("D2:D3")
+        ws.cell(2, 5, "DMZ"); ws.merge_cells("E2:E3")
+        ws.cell(2, 6, "TCP"); ws.merge_cells("F2:F3")
+        ws.cell(2, 7, "80\n443"); ws.merge_cells("G2:G3")
+        ws.cell(2, 8, "OUT"); ws.merge_cells("H2:H3")
+        ws.cell(2, 9, "웹"); ws.merge_cells("I2:I3")
+
+    p = _build(tmp_path, "merged-multiline-port.xlsx", build)
+
+    parsed = parse_request_sheet(_rows_from(p))
+    exploded = parse_request_sheet_exploded(_rows_from(p))
+
+    assert len(parsed) == 1
+    assert parsed[0]["port"] == "80;443"
+    assert [r["port"] for r in exploded] == ["80", "443"]
+    for r in exploded:
         res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
         assert res.status == "OK"
         assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
