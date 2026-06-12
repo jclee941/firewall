@@ -20,26 +20,18 @@ import pytest
 sys.path.insert(0, os.path.dirname(__file__))
 
 from request_parser_oracle import parse_request_sheet, parse_request_sheet_exploded  # noqa: E402
-from route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
+from route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
 
 
 @pytest.fixture
 def engine():
-    nets = [
-        Network("업무PC망", "10.10.0.0/16", "internal"),
-        Network("서버망", "172.16.1.0/24", "server"),
-        Network("중간망", "10.30.0.0/16", "transit"),
-        Network("DMZ망", "10.20.0.0/16", "dmz"),
-        Network("외부", "0.0.0.0/0", "outside"),
-    ]
     fws = [Firewall("SECUI-FW-01"), Firewall("SECUI-FW-02"), Firewall("SECUI-FW-03")]
-    rps = [
-        RoutingPath("SECUI-FW-01", "internal", "server", "eth1", "eth2", 10),
-        RoutingPath("SECUI-FW-01", "internal", "transit", "eth1", "eth3", 20),
-        RoutingPath("SECUI-FW-02", "transit", "dmz", "eth1", "eth2", 30),
-        RoutingPath("SECUI-FW-03", "dmz", "outside", "eth1", "eth2", 40),
+    ranges = [
+        FirewallRange("SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10),
+        FirewallRange("SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10),
+        FirewallRange("SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20),
     ]
-    return RouteEngine(networks=nets, firewalls=fws, routing_paths=rps)
+    return RouteEngine(firewalls=fws, firewall_ranges=ranges)
 
 
 def _rows_from(path):

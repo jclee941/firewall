@@ -23,7 +23,7 @@ PY = sys.executable
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from request_parser_oracle import parse_request_sheet, sheet_to_filled_rows  # noqa: E402
-from route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
+from route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -37,18 +37,18 @@ def request_tree():
 
 
 def _seed_engine():
-    from build_xlsm import FIREWALLS
+    from build_xlsm import FIREWALLS, FIREWALL_RANGES
 
     def truthy(v):
         return str(v).upper() in ("Y", "YES", "TRUE", "1")
 
-    # auto inside/outside mode: the firewall CIDRs ARE the zones, so do NOT also
-    # pass network_definitions (its legacy zones would collide with cidr: zones).
-    fws = [Firewall(r[0], r[1], truthy(r[2]),
-                    inside_cidr=r[3] if len(r) > 3 else "",
-                    outside_cidr=r[4] if len(r) > 4 else "")
+    fws = [Firewall(r[0], r[1], truthy(r[2]))
            for r in FIREWALLS[1:]]
-    return RouteEngine(networks=[], firewalls=fws, routing_paths=[])
+    ranges = [
+        FirewallRange(r[0], r[1], r[2], r[3], int(r[4]), truthy(r[5]), r[6])
+        for r in FIREWALL_RANGES[1:]
+    ]
+    return RouteEngine(firewalls=fws, firewall_ranges=ranges)
 
 
 def test_tree_structure(request_tree):

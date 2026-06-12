@@ -31,9 +31,8 @@ from request_parser_oracle import (  # noqa: E402
 )
 from route_oracle import (  # noqa: E402
     Firewall,
-    Network,
+    FirewallRange,
     RouteEngine,
-    RoutingPath,
 )
 
 
@@ -43,21 +42,16 @@ from route_oracle import (  # noqa: E402
 
 @pytest.fixture
 def engine():
-    nets = [
-        Network("업무PC망", "10.10.0.0/16", "internal"),
-        Network("서버망", "172.16.1.0/24", "server"),
-        Network("중간망", "10.30.0.0/16", "transit"),
-        Network("DMZ망", "10.20.0.0/16", "dmz"),
-        Network("외부", "0.0.0.0/0", "outside"),
-    ]
     fws = [Firewall("SECUI-FW-01"), Firewall("SECUI-FW-02"), Firewall("SECUI-FW-03")]
-    rps = [
-        RoutingPath("SECUI-FW-01", "internal", "server", "eth1", "eth2", 10),
-        RoutingPath("SECUI-FW-01", "internal", "transit", "eth1", "eth3", 20),
-        RoutingPath("SECUI-FW-02", "transit", "dmz", "eth1", "eth2", 30),
-        RoutingPath("SECUI-FW-03", "dmz", "outside", "eth1", "eth2", 40),
+    ranges = [
+        FirewallRange("SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10),
+        FirewallRange("SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10),
+        FirewallRange("SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20),
+        FirewallRange("SECUI-FW-01", "10.10.0.0/16", "8.8.8.0/24", "OUT", 10),
+        FirewallRange("SECUI-FW-02", "10.10.0.0/16", "8.8.8.0/24", "OUT", 20),
+        FirewallRange("SECUI-FW-03", "10.10.0.0/16", "8.8.8.0/24", "OUT", 30),
     ]
-    return RouteEngine(networks=nets, firewalls=fws, routing_paths=rps)
+    return RouteEngine(firewalls=fws, firewall_ranges=ranges)
 
 
 def _sheet_rows(ws):
@@ -244,7 +238,7 @@ def test_parse_varied_layout(tmp_path, engine):
     res1 = engine.analyze(parsed[0]["source_ip"], parsed[0]["dest_ip"], parsed[0]["direction"])
     assert res1.status == "OK"
     assert res1.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
-    assert res1.zone_path == "internal>transit>dmz"
+    assert res1.zone_path == "10.10.0.0/16>10.20.0.0/16"
 
     # row 2: 10.10.10.9 (internal) -> 172.16.1.10 (server) => FW-01
     res2 = engine.analyze(parsed[1]["source_ip"], parsed[1]["dest_ip"], parsed[1]["direction"])
@@ -375,11 +369,10 @@ def test_parse_with_user_aliases_then_route(tmp_path, engine):
     assert r["source_ip"] == "10.10.10.5"
     assert r["dest_ip"] == "10.20.20.5"
     assert r["purpose"] == "DMZ 연동"
-    # 경로추적: internal -> transit -> dmz => 두 방화벽
     res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
     assert res.status == "OK"
     assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
-    assert res.zone_path == "internal>transit>dmz"
+    assert res.zone_path == "10.10.0.0/16>10.20.0.0/16"
 
 
 def test_user_alias_missing_without_setting_raises(tmp_path):
@@ -464,7 +457,7 @@ def test_multisheet_xlsx_data_on_second_sheet_parses(tmp_path, engine):
     assert r["source_ip"] == "10.10.10.5"
     assert r["dest_ip"] == "10.20.20.5"
     res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
-    assert res.status in ("OK", "MULTI_PATH")
+    assert res.status == "OK"
 
 
 # --------------------------------------------------------------------------- #

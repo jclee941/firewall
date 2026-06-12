@@ -6,8 +6,7 @@ Private Const REQUESTS_SHEET As String = "requests"
 Private Const SECUI_BATCH_SHEET As String = "secui_batch"
 Private Const SECUI_CLI_SHEET As String = "secui_cli"
 Private Const LOG_SHEET As String = "processing_log"
-Private Const NETWORK_SHEET As String = "network_definitions"
-Private Const ROUTING_SHEET As String = "routing_paths"
+Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
 
 ' requests output layout: row 1 = cosmetic group labels, row 2 = leaf headers,
 ' data starts at row 3. Keep these in sync with build_xlsm.py constants.
@@ -52,35 +51,31 @@ Private mParseSheetName As String
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
     Dim firewallsSheet As Worksheet
+    Dim firewallRangeSheet As Worksheet
     Dim settingsSheet As Worksheet
     Dim logSheet As Worksheet
-    Dim networkSheet As Worksheet
-    Dim routingSheet As Worksheet
     Dim secuiBatchSheet As Worksheet
     Dim secuiCliSheet As Worksheet
 
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
+    Set firewallRangeSheet = EnsureSheet(FIREWALL_RANGE_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
     Set logSheet = EnsureSheet(LOG_SHEET)
-    Set networkSheet = EnsureSheet(NETWORK_SHEET)
-    Set routingSheet = EnsureSheet(ROUTING_SHEET)
     Set secuiBatchSheet = EnsureSheet(SECUI_BATCH_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
 
     WriteRequestHeaders requestsSheet
     WriteFirewallHeaders firewallsSheet
+    WriteFirewallRangeHeaders firewallRangeSheet
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
-    WriteNetworkHeaders networkSheet
-    WriteRoutingHeaders routingSheet
     WriteSecuiBatchHeaders secuiBatchSheet
     WriteSecuiCliHeaders secuiCliSheet
     FormatRequestsSheet requestsSheet
     FormatFirewallsSheet firewallsSheet
+    FormatGenericSheet firewallRangeSheet, "A:G"
     FormatLogSheet logSheet
-    FormatGenericSheet networkSheet, "A:E"
-    FormatGenericSheet routingSheet, "A:G"
     FormatSecuiBatchSheet secuiBatchSheet
     FormatSecuiCliSheet secuiCliSheet
 
@@ -120,8 +115,8 @@ Public Sub MergeFirewallRequestFolder()
     On Error GoTo 0
     GoTo RouteDone
 RouteFailed:
-    AppendProcessingLog logSheet, "(route analysis)", "ERROR", 0, "라우트 분석 실패: " & Err.Description
-    MsgBox "라우트 분석 중 오류가 발생했습니다: " & Err.Description, vbExclamation
+    AppendProcessingLog logSheet, "(firewall range analysis)", "ERROR", 0, "방화벽 대역 분석 실패: " & Err.Description
+    MsgBox "방화벽 대역 분석 중 오류가 발생했습니다: " & Err.Description, vbExclamation
     On Error GoTo 0
 RouteDone:
     ' Append duplicate-candidate markers AFTER route analysis owns validation_*,
@@ -1203,7 +1198,7 @@ End Sub
 Private Sub HighlightDuplicateRow(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
     ' Highlight the duplicate row WITHOUT clobbering the route-owned
     ' validation_status cell color (column 15), which AnalyzeRequestRoutes set
-    ' to encode OK/MULTI_PATH/severity. Save and restore that one cell's color.
+    ' to encode OK/DIRECTION_MISMATCH/severity. Save and restore that one cell's color.
     Dim statusColor As Variant
     statusColor = worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Interior.Color
     worksheet.Rows(rowIndex).Interior.Color = RGB(255, 230, 153)
@@ -1238,16 +1233,16 @@ Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_NAME)).Merge
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_NAME)).Merge
     Application.DisplayAlerts = True
-    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로", "매칭근거", "요청폴더")
+    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:F1").Value = Array("firewall_name", "vendor", "enabled", "inside_cidr", "outside_cidr", "comment")
-        worksheet.Range("A2:F4").Value = Array( _
-            Array("SECUI-FW-01", "SECUI", "Y", "10.10.0.0/16", "172.16.0.0/16", "내부-서버 구간"), _
-            Array("SECUI-FW-02", "SECUI", "Y", "172.16.0.0/16", "10.20.0.0/16", "서버-DMZ 구간"), _
-            Array("SECUI-FW-03", "SECUI", "Y", "10.20.0.0/16", "0.0.0.0/0", "DMZ-외부 구간"))
+        worksheet.Range("A1:D1").Value = Array("firewall_name", "vendor", "enabled", "comment")
+        worksheet.Range("A2:D4").Value = Array( _
+            Array("SECUI-FW-01", "SECUI", "Y", "내부-서버 구간"), _
+            Array("SECUI-FW-02", "SECUI", "Y", "서버-DMZ 구간"), _
+            Array("SECUI-FW-03", "SECUI", "Y", "DMZ-외부 구간"))
     End If
 End Sub
 
@@ -1257,8 +1252,7 @@ Private Sub WriteSettings(ByVal worksheet As Worksheet)
         worksheet.Range("A2:C2").Value = Array("request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다.")
         worksheet.Range("A3:C3").Value = Array("parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다.")
         worksheet.Range("A4:C4").Value = Array("parse_targets", "출발지IP;목적지IP", "(사용 안 함/예약) 현재 동작에 영향 없음. 출발지IP와 목적지IP는 항상 필수입니다.")
-        worksheet.Range("A5:C5").Value = Array("route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE).")
-        worksheet.Range("A6:C6").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
+        worksheet.Range("A5:C5").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
     Else
         ' Upgrade an already-seeded settings sheet: add parse_sheet if it predates
         ' this version, without disturbing existing rows/values.
@@ -1317,31 +1311,20 @@ Private Function HeaderKey(ByVal headerText As String) As String
 End Function
 
 Private Sub FormatFirewallsSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:B").AutoFit
+    worksheet.Columns("A:D").AutoFit
     worksheet.Rows(1).Font.Bold = True
 End Sub
 
-Private Sub WriteNetworkHeaders(ByVal worksheet As Worksheet)
+Private Sub WriteFirewallRangeHeaders(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:E1").Value = Array("network_name", "network_cidr", "zone", "site", "enabled")
-        worksheet.Range("A2:E7").Value = Array( _
-            Array("업무PC망", "10.10.0.0/16", "internal", "본사", "Y"), _
-            Array("서버망", "172.16.1.0/24", "server", "IDC", "Y"), _
-            Array("중간망", "10.30.0.0/16", "transit", "IDC", "Y"), _
-            Array("DMZ망", "10.20.0.0/16", "dmz", "IDC", "Y"), _
-            Array("외부", "0.0.0.0/0", "outside", "공통", "Y"), _
-            Array("서버DMZ", "172.16.20.0/24", "dmz", "IDC", "Y"))
-    End If
-End Sub
-
-Private Sub WriteRoutingHeaders(ByVal worksheet As Worksheet)
-    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
-        worksheet.Range("A1:G1").Value = Array("firewall_name", "src_zone", "dst_zone", "ingress_if", "egress_if", "path_order", "enabled")
-        worksheet.Range("A2:G5").Value = Array( _
-            Array("SECUI-FW-01", "internal", "server", "eth1", "eth2", 10, "Y"), _
-            Array("SECUI-FW-01", "internal", "transit", "eth1", "eth3", 20, "Y"), _
-            Array("SECUI-FW-02", "transit", "dmz", "eth1", "eth2", 30, "Y"), _
-            Array("SECUI-FW-03", "dmz", "outside", "eth1", "eth2", 40, "Y"))
+        worksheet.Range("A1:G1").Value = Array("firewall_name", "source_cidr", "destination_cidr", "direction", "path_order", "enabled", "comment")
+        worksheet.Range("A2:G7").Value = Array( _
+            Array("SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10, "Y", "업무PC -> 서버"), _
+            Array("SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10, "Y", "업무PC -> DMZ"), _
+            Array("SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20, "Y", "업무PC -> DMZ"), _
+            Array("SECUI-FW-01", "10.10.0.0/16", "8.8.8.0/24", "OUT", 10, "Y", "업무PC -> 외부 DNS"), _
+            Array("SECUI-FW-02", "10.10.0.0/16", "8.8.8.0/24", "OUT", 20, "Y", "업무PC -> 외부 DNS"), _
+            Array("SECUI-FW-03", "10.10.0.0/16", "8.8.8.0/24", "OUT", 30, "Y", "업무PC -> 외부 DNS"))
     End If
 End Sub
 

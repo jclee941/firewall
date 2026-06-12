@@ -42,34 +42,25 @@ REQUESTS_HEADERS = [
     "적용대상방화벽",
     "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향",
     "용도", "시작일", "종료일", "비고",
-    "검증메시지", "방화벽경로", "출발Zone", "목적Zone", "Zone경로",
+    "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로",
     "매칭근거", "요청폴더",
 ]
 
 FIREWALLS = [
-    ["firewall_name", "vendor", "enabled", "inside_cidr", "outside_cidr", "comment"],
-    ["SECUI-FW-01", "SECUI", "Y", "10.10.0.0/16", "172.16.0.0/16", "\ub0b4\ubd80-\uc11c\ubc84 \uad6c\uac04"],
-    ["SECUI-FW-02", "SECUI", "Y", "172.16.0.0/16", "10.20.0.0/16", "\uc11c\ubc84-DMZ \uad6c\uac04"],
-    ["SECUI-FW-03", "SECUI", "Y", "10.20.0.0/16", "0.0.0.0/0", "DMZ-\uc678\ubd80 \uad6c\uac04"],
+    ["firewall_name", "vendor", "enabled", "comment"],
+    ["SECUI-FW-01", "SECUI", "Y", "\ub0b4\ubd80-\uc11c\ubc84 \uad6c\uac04"],
+    ["SECUI-FW-02", "SECUI", "Y", "\uc11c\ubc84-DMZ \uad6c\uac04"],
+    ["SECUI-FW-03", "SECUI", "Y", "DMZ-\uc678\ubd80 \uad6c\uac04"],
 ]
 
-NETWORK_DEFS = [
-    ["network_name", "network_cidr", "zone", "site", "enabled"],
-    ["업무PC망", "10.10.0.0/16", "internal", "본사", "Y"],
-    ["서버망", "172.16.1.0/24", "server", "IDC", "Y"],
-    ["중간망", "10.30.0.0/16", "transit", "IDC", "Y"],
-    ["DMZ망", "10.20.0.0/16", "dmz", "IDC", "Y"],
-    ["외부", "0.0.0.0/0", "outside", "공통", "Y"],
-    ["서버DMZ", "172.16.20.0/24", "dmz", "IDC", "Y"],
-]
-
-# routing_paths and network_definitions are header-only/advanced by default.
-# With no explicit routing_paths rows the engine AUTO-DERIVES the graph from
-# firewalls.inside_cidr/outside_cidr (each CIDR is a zone; shared CIDRs chain
-# firewalls). network_definitions is only consulted in explicit routing_paths
-# mode, so it is kept for that advanced workflow but ignored in auto mode.
-ROUTING_PATHS = [
-    ["firewall_name", "src_zone", "dst_zone", "ingress_if", "egress_if", "path_order", "enabled"],
+FIREWALL_RANGES = [
+    ["firewall_name", "source_cidr", "destination_cidr", "direction", "path_order", "enabled", "comment"],
+    ["SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10, "Y", "\uc5c5\ubb34PC -> \uc11c\ubc84"],
+    ["SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10, "Y", "\uc5c5\ubb34PC -> DMZ"],
+    ["SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20, "Y", "\uc5c5\ubb34PC -> DMZ"],
+    ["SECUI-FW-01", "10.10.0.0/16", "8.8.8.0/24", "OUT", 10, "Y", "\uc5c5\ubb34PC -> \uc678\ubd80 DNS"],
+    ["SECUI-FW-02", "10.10.0.0/16", "8.8.8.0/24", "OUT", 20, "Y", "\uc5c5\ubb34PC -> \uc678\ubd80 DNS"],
+    ["SECUI-FW-03", "10.10.0.0/16", "8.8.8.0/24", "OUT", 30, "Y", "\uc5c5\ubb34PC -> \uc678\ubd80 DNS"],
 ]
 
 SETTINGS = [
@@ -77,7 +68,6 @@ SETTINGS = [
     ["request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다."],
     ["parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다."],
     ["parse_targets", "출발지IP;목적지IP", "(사용 안 함/예약) 현재 동작에 영향 없음. 출발지IP와 목적지IP는 항상 필수입니다."],
-    ["route_legacy_fallback", "FALSE", "라우팅 경로를 못 찾을 때 기존 CIDR 겹침 방식으로 대체할지(TRUE/FALSE)."],
     ["header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소"],
 ]
 PROCESSING_LOG = [["processed_at", "source_file", "status", "merged_rows", "message"]]
@@ -115,9 +105,9 @@ SAMPLE_FORMAT = [
 
 USAGE = [
     ["Step", "Action"],
-    ["1", "firewalls 시트에 방화벽 장비를 등록한다. inside_cidr(내부대역)·outside_cidr(외부대역)만 적어도 경로가 자동 생성된다"],
-    ["2", "(선택) network_definitions 시트에 IP 대역→zone 매핑을 등록한다 (대역정의). 비워두면 firewalls의 inside/outside로 자동 추론"],
-    ["3", "(고급) zone 경로를 직접 제어하려면 routing_paths 시트에 zone-to-zone 경로를 등록한다 (라우팅경로). 행이 있으면 우선 적용"],
+    ["1", "firewalls 시트에 방화벽 장비명, 벤더, 사용여부를 등록한다"],
+    ["2", "firewall_ranges 시트에 출발지대역, 목적지대역, 방향, 순서를 등록한다"],
+    ["3", "대역은 IP/CIDR/ANY를 쓸 수 있고 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
     ["4", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 폴더를 선택한다"],
     ["5", "requests 시트에 직접 입력하거나 MergeFirewallRequestFolder 매크로로 폴더 안 신청서를 통합한다 (Alt+F8)"],
     ["6", "AnalyzeRequestRoutes 매크로를 실행해 적용대상방화벽 경로와 검증 상태를 계산한다"],
@@ -187,9 +177,8 @@ _WIDTHS = {
         "O": 28, "P": 12, "Q": 12, "R": 24, "S": 40, "T": 34, "U": 18,
         "V": 18, "W": 30, "X": 60, "Y": 24,
     },
-    "firewalls": {"A": 16, "B": 10, "C": 9, "D": 16, "E": 16, "F": 24},
-    "network_definitions": {"A": 14, "B": 18, "C": 12, "D": 10, "E": 9},
-    "routing_paths": {"A": 16, "B": 12, "C": 12, "D": 12, "E": 12, "F": 12, "G": 9},
+    "firewalls": {"A": 16, "B": 10, "C": 9, "D": 28},
+    "firewall_ranges": {"A": 16, "B": 18, "C": 18, "D": 10, "E": 12, "F": 9, "G": 36},
     "settings": {"A": 22, "B": 26, "C": 60},
     "header_aliases": {"A": 16, "B": 22, "C": 44},
     "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
@@ -206,8 +195,7 @@ _WIDTHS = {
     "usage": {"A": 8, "B": 70},
 }
 
-_FILTER_SHEETS = {"requests", "firewalls", "network_definitions",
-                  "routing_paths", "processing_log"}
+_FILTER_SHEETS = {"requests", "firewalls", "firewall_ranges", "processing_log"}
 
 # requests output layout: row 1 = cosmetic group labels, row 2 = leaf headers,
 # data from row 3. Mirror of VBA REQ_HEADER_GROUP_ROW / REQ_HEADER_ROW / REQ_DATA_START_ROW.
@@ -263,8 +251,7 @@ _REQ_DST_IP_COL = 10      # 목적지IP (required)
 _TAB_COLORS = {
     "requests": "FF4472C4",            # result (blue)
     "firewalls": "FF70AD47",           # input (green)
-    "network_definitions": "FF70AD47",
-    "routing_paths": "FF70AD47",
+    "firewall_ranges": "FFFFC000",
     "settings": "FFFFC000",            # config (amber)
     "header_aliases": "FFFFC000",
     "processing_log": "FFA6A6A6",      # log (grey)
@@ -279,8 +266,7 @@ _EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")  # light red
 # operator-input sheets that MAY be protected. requests/processing_log are
 # written by VBA at runtime and must NEVER be protected.
 _PROTECT_SHEETS = {
-    "firewalls", "network_definitions", "routing_paths",
-    "settings", "header_aliases",
+    "firewalls", "firewall_ranges", "settings", "header_aliases",
 }
 _NO_PROTECT_SHEETS = {"requests", "processing_log", "secui_batch", "secui_cli"}
 
@@ -323,8 +309,9 @@ def _apply_ux(wb) -> None:
     # 3) firewalls.enabled dropdown (VBA-truthy values only) ----------------- #
     fw = wb["firewalls"]
     _add_list_dv(fw, "C", ["Y", "N"])
-    if "network_definitions" in wb.sheetnames:
-        _add_list_dv(wb["network_definitions"], "E", ["Y", "N"])
+    ranges = wb["firewall_ranges"]
+    _add_list_dv(ranges, "D", ["OUT", "IN", "BOTH"])
+    _add_list_dv(ranges, "F", ["Y", "N"])
 
     # 4) conditional format: flag empty required IP cells -------------------- #
     src_letter = get_column_letter(_REQ_SRC_IP_COL)  # H
@@ -500,8 +487,7 @@ def main() -> int:
         return ws
 
     add("firewalls", FIREWALLS)
-    add("network_definitions", NETWORK_DEFS)
-    add("routing_paths", ROUTING_PATHS)
+    add("firewall_ranges", FIREWALL_RANGES)
     add("settings", SETTINGS)
     add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)

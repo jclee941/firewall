@@ -5,7 +5,7 @@ Instead we prove the artifact is a real macro-enabled workbook by inspecting:
   - the zip contains xl/vbaProject.bin (macros embedded)
   - both VBA modules are present with the expected public macros
   - all required sheets and headers exist
-  - seed data (firewalls / network_definitions / routing_paths) is present
+  - seed data (firewalls / firewall_ranges) is present
   - the seeded example request yields a real multi-firewall path via the oracle
 
 Run: .venv/bin/python -m pytest tests/test_xlsm_structure.py -v
@@ -25,7 +25,7 @@ PY = sys.executable
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from tests.route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
+from tests.route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
 
 
 def _build():
@@ -75,7 +75,7 @@ def test_sheets_and_headers(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
 
     expected_sheets = {
-        "requests", "firewalls", "network_definitions", "routing_paths",
+        "requests", "firewalls", "firewall_ranges",
         "settings", "processing_log", "sample-request-format", "usage",
         "secui_batch", "secui_cli",
     }
@@ -84,10 +84,9 @@ def test_sheets_and_headers(xlsm_path):
 
     # Exact header row per sheet. None of these may silently drift.
     expected_headers = {
-        "firewalls": ["firewall_name", "vendor", "enabled", "inside_cidr", "outside_cidr", "comment"],
-        "network_definitions": ["network_name", "network_cidr", "zone", "site", "enabled"],
-        "routing_paths": ["firewall_name", "src_zone", "dst_zone",
-                          "ingress_if", "egress_if", "path_order", "enabled"],
+        "firewalls": ["firewall_name", "vendor", "enabled", "comment"],
+        "firewall_ranges": ["firewall_name", "source_cidr", "destination_cidr",
+                            "direction", "path_order", "enabled", "comment"],
         "settings": ["key", "value", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
         "secui_batch": [
@@ -135,37 +134,42 @@ def test_sheets_and_headers(xlsm_path):
 
 def test_seed_data_present(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
-    assert wb["firewalls"].max_row >= 4          # header + 3 firewalls
-    assert wb["network_definitions"].max_row >= 6
-    # firewalls.inside_cidr / outside_cidr seeded (auto-route mode); routing_paths
-    # is header-only by default (auto-derive from inside/outside CIDRs).
-    assert wb["firewalls"].cell(2, 4).value, "firewalls.inside_cidr must be seeded"
-    assert wb["firewalls"].cell(2, 5).value, "firewalls.outside_cidr must be seeded"
-    assert wb["routing_paths"].max_row >= 1
-    # settings has the fallback toggle key
+    assert wb["firewalls"].max_row >= 4
+    assert wb["firewall_ranges"].max_row >= 7
+    assert wb["firewall_ranges"].cell(2, 2).value, "firewall_ranges.source_cidr must be seeded"
+    assert wb["firewall_ranges"].cell(2, 3).value, "firewall_ranges.destination_cidr must be seeded"
     settings_keys = [wb["settings"].cell(r, 1).value for r in range(1, wb["settings"].max_row + 1)]
-    assert "route_legacy_fallback" in settings_keys
+    assert "header_alias" in settings_keys
 
 
 def _engine_from_xlsm(wb):
-    """Build a RouteEngine from the seeded workbook (auto inside/outside mode)."""
     def T(v):
         return str(v).upper() in ("Y", "YES", "TRUE", "1")
     fs = wb["firewalls"]
     fws = [
-        Firewall(fs.cell(r, 1).value, fs.cell(r, 2).value or "", T(fs.cell(r, 3).value),
-                 inside_cidr=fs.cell(r, 4).value or "",
-                 outside_cidr=fs.cell(r, 5).value or "")
+        Firewall(fs.cell(r, 1).value, fs.cell(r, 2).value or "", T(fs.cell(r, 3).value))
         for r in range(2, fs.max_row + 1) if fs.cell(r, 1).value
     ]
-    return RouteEngine(networks=[], firewalls=fws, routing_paths=[])
+    rs = wb["firewall_ranges"]
+    ranges = [
+        FirewallRange(
+            rs.cell(r, 1).value,
+            rs.cell(r, 2).value or "",
+            rs.cell(r, 3).value or "",
+            rs.cell(r, 4).value or "",
+            int(rs.cell(r, 5).value or 999999),
+            T(rs.cell(r, 6).value),
+            rs.cell(r, 7).value or "",
+        )
+        for r in range(2, rs.max_row + 1) if rs.cell(r, 1).value
+    ]
+    return RouteEngine(firewalls=fws, firewall_ranges=ranges)
 
 
 def test_seeded_example_yields_multi_firewall_path(xlsm_path):
     """The seeded example request must resolve to a real multi-hop path."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     eng = _engine_from_xlsm(wb)
-    # 10.10.10.5 (FW-01 inside) -> 8.8.8.8 (FW-03 outside 0.0.0.0/0): 3 firewalls
     res = eng.analyze("10.10.10.5", "8.8.8.8", "OUT")
     assert res.status == "OK"
     assert ";" in res.target_firewalls
@@ -177,7 +181,6 @@ def test_builtin_seed_resolves_cidr_request(xlsm_path):
     """A CIDR (\ub300\uc5ed) request against the shipped seed data must resolve a path."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     eng = _engine_from_xlsm(wb)
-    # CIDR request inside FW-01.inside -> inside FW-01.outside: one firewall
     res = eng.analyze("10.10.10.0/24", "172.16.1.0/24", "OUT")
     assert res.status == "OK"
     assert res.target_firewalls == "SECUI-FW-01"
@@ -206,7 +209,7 @@ def test_settings_schema_matches_vba_and_build(xlsm_path):
     s = wb["settings"]
     assert [s.cell(1, c).value for c in range(1, 4)] == ["key", "value", "\uc124\uba85"]
     keys = [s.cell(r, 1).value for r in range(2, s.max_row + 1)]
-    for required in ("request_folder", "parse_sheet", "parse_targets", "route_legacy_fallback", "header_alias"):
+    for required in ("request_folder", "parse_sheet", "parse_targets", "header_alias"):
         assert required in keys, f"settings missing key {required}"
     # every seeded settings row must carry a non-empty 설명 (column 3)
     for r in range(2, s.max_row + 1):
@@ -221,18 +224,8 @@ def test_settings_schema_matches_vba_and_build(xlsm_path):
         "WriteSettings still writes the legacy 2-column header"
 
 
-# --------------------------------------------------------------------------- #
-# F7: the dead merge-time legacy CIDR matcher (and its now-orphaned helpers) must
-# be gone. AnalyzeRequestRoutes solely owns target_firewalls / validation_* and the
-# empty-target semantics for INTRA_ZONE / NO_PATH / ZONE_UNRESOLVED, so the old
-# MarkUnmatchedFirewalls post-processor (which overwrote blanks with UNMATCHED) is
-# --------------------------------------------------------------------------- #
-
 def test_policy_module_has_no_merge_time_legacy_firewall_matching():
     src = open(VBA_POLICY, encoding="utf-8").read()
-    # legacy CIDR-overlap matcher, its private helpers, the parse-target column
-    # plumbing that only the matcher used, and the obsolete unmatched-marker that
-    # corrupted route-owned output — all must be removed.
     for dead in (
         "ResolveTargetFirewalls",
         "RequestRowMatchDetails",
@@ -297,7 +290,7 @@ def test_duplicate_highlight_preserves_route_status_color():
 
     Since MarkDuplicateRequests now runs AFTER AnalyzeRequestRoutes, a bare
     `Rows(rowIndex).Interior.Color = ...` would overwrite the validation_status
-    cell color (column 15) that WriteResultRow set to encode OK/MULTI_PATH/severity.
+    cell color (column 15) that WriteResultRow set to encode OK/DIRECTION_MISMATCH/severity.
     The highlight must save and restore that one cell's color.
     """
     src = open(VBA_POLICY, encoding="utf-8").read()
@@ -364,22 +357,12 @@ def test_korean_preserved_in_injected_vba(xlsm_path):
 VBA_ROUTE = os.path.join(ROOT, "vba", "FirewallRouteAnalysis.bas")
 
 
-def test_auto_zone_ordinal_counts_all_rows():
-    """firewalls ordinal must increment for every row BEFORE the IsEnabled check,
-    so disabled firewalls consume an ordinal (Python parity). Guards the single-
-    line-If trap that previously ran fwOrdinal/fwZones unconditionally."""
+def test_vba_loads_firewall_ranges_sheet():
     src = open(VBA_ROUTE, encoding="utf-8").read()
-    norm = src.replace("\r\n", "\n")
-    inc = norm.find("fwOrdinal = fwOrdinal + 1")
-    gate = norm.find("If fwEnabled Then\n")
-    inside = norm.find('fwInside(fwName) = Trim$(CStr(ws.Cells(i, 4).Value))')
-    assert inc != -1, "ordinal increment line missing"
-    assert gate != -1, "enabled gate must be a block 'If fwEnabled Then' on its own line"
-    assert inside != -1, "fwInside assignment missing"
-    assert inc < gate, "fwOrdinal must increment before the enabled gate"
-    assert inside > gate, "fwInside must be assigned inside the enabled block"
-    # no single-line If trap (a statement after Then)
-    assert "If IsEnabled(ws.Cells(i, 3).Value) Then mEnabledFw" not in norm
+    assert 'Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"' in src
+    assert "ThisWorkbook.Worksheets(FIREWALL_RANGE_SHEET)" in src
+    assert "NETWORK_SHEET" not in src
+    assert "ROUTING_SHEET" not in src
 
 
 def test_vba_split_address_list_collapses_spaces():
