@@ -83,6 +83,17 @@ SECUI_CLI_HEADERS = [
     "원본파일", "원본행",
 ]
 
+VENDOR_CLI_TEMPLATES = [
+    ["vendor", "template_name", "enabled", "command_template", "review_note"],
+    [
+        "SECUI",
+        "default_allow_srule",
+        "Y",
+        "fw set srule name {policy_name_q} action allow src {source_ip_q} dst {destination_ip_q} service {service_q} log enable enable yes description {description_q} # device={firewall_name}",
+        "장비 CLI에서 'fw set srule help'로 옵션명 확인 후 적용",
+    ],
+]
+
 # header_aliases: table-form alias mapping. Operators add one row per
 # non-standard header in their request files. standard = the canonical column
 # (or any built-in alias of it); your_column = the actual header in the request.
@@ -112,7 +123,8 @@ USAGE = [
     ["5", "requests 시트에 직접 입력하거나 MergeFirewallRequestFolder 매크로로 폴더 안 신청서를 통합한다 (Alt+F8)"],
     ["6", "AnalyzeRequestRoutes 매크로를 실행해 대상방화벽과 검증 상태를 계산한다"],
     ["7", "ConvertRequestsToSecuiBatch 매크로로 requests 결과를 secui_batch 장비별 배치 양식으로 변환한다"],
-    ["8", "ConvertRequestsToSecuiCli 매크로로 requests 결과를 secui_cli 장비별 CLI 명령 초안으로 변환한다"],
+    ["8", "vendor_cli_templates 시트에서 CLI 명령 템플릿을 검토하거나 수정한다"],
+    ["9", "ConvertRequestsToSecuiCli 매크로로 requests 결과를 secui_cli 장비별 CLI 명령 초안으로 변환한다"],
     ["⚠", "입력 시트(녹색·황색 탭)는 보호되어 있다. 헤더는 수정 불가, 데이터 입력 영역만 타이핑 가능"],
     ["ℹ", "requests·processing_log(파랑·회색 탭)은 매크로가 자동으로 채운다. 직접 수정하지 않는다"],
     ["💡", "프로토콜·방향 셀은 드롭다운 목록에서 선택. 출발지IP·목적지IP가 비면 빨간색으로 표시된다"],
@@ -189,6 +201,7 @@ _WIDTHS = {
     },
     "secui_cli": {"A": 6, "B": 18, "C": 36, "D": 120, "E": 60,
                   "F": 16, "G": 14, "H": 24, "I": 10},
+    "vendor_cli_templates": {"A": 10, "B": 24, "C": 9, "D": 150, "E": 60},
     "sample-request-format": {"A": 4, "B": 6, "C": 16, "D": 12, "E": 16,
                               "F": 12, "G": 10, "H": 8, "I": 8, "J": 18,
                               "K": 12, "L": 12, "M": 14},
@@ -258,6 +271,7 @@ _TAB_COLORS = {
     "processing_log": "FFA6A6A6",      # log (grey)
     "secui_batch": "FF4472C4",
     "secui_cli": "FF4472C4",
+    "vendor_cli_templates": "FFFFC000",
     "sample-request-format": "FFED7D31",  # sample (orange)
     "usage": "FFED7D31",
 }
@@ -269,6 +283,7 @@ _TARGET_FIREWALL_FILL = PatternFill("solid", fgColor="D9EAD3")
 # written by VBA at runtime and must NEVER be protected.
 _PROTECT_SHEETS = {
     "firewalls", "firewall_ranges", "settings", "header_aliases",
+    "vendor_cli_templates",
 }
 _NO_PROTECT_SHEETS = {"requests", "processing_log", "secui_batch", "secui_cli"}
 
@@ -503,6 +518,7 @@ def main() -> int:
     add("processing_log", PROCESSING_LOG)
     add("secui_batch", [SECUI_BATCH_HEADERS])
     add("secui_cli", [SECUI_CLI_HEADERS])
+    add("vendor_cli_templates", VENDOR_CLI_TEMPLATES)
     # sample-request-format has a blank A column header
     sf = wb.create_sheet("sample-request-format")
     _write_rows(sf, SAMPLE_FORMAT)

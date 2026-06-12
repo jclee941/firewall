@@ -12,6 +12,7 @@ Run: .venv/bin/python -m pytest tests/test_xlsm_structure.py -v
 """
 
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -77,7 +78,7 @@ def test_sheets_and_headers(xlsm_path):
     expected_sheets = {
         "requests", "firewalls", "firewall_ranges",
         "settings", "processing_log", "sample-request-format", "usage",
-        "secui_batch", "secui_cli",
+        "secui_batch", "secui_cli", "vendor_cli_templates",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -100,6 +101,9 @@ def test_sheets_and_headers(xlsm_path):
         "secui_cli": [
             "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
             "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
+        ],
+        "vendor_cli_templates": [
+            "vendor", "template_name", "enabled", "command_template", "review_note",
         ],
         "usage": ["Step", "Action"],
     }
@@ -141,6 +145,14 @@ def test_seed_data_present(xlsm_path):
     assert wb["firewall_ranges"].cell(2, 3).value, "firewall_ranges.destination_cidr must be seeded"
     settings_keys = [wb["settings"].cell(r, 1).value for r in range(1, wb["settings"].max_row + 1)]
     assert "header_alias" in settings_keys
+    template = wb["vendor_cli_templates"]
+    assert template.cell(2, 1).value == "SECUI"
+    assert template.cell(2, 3).value == "Y"
+    command_template = str(template.cell(2, 4).value or "")
+    assert "{policy_name_q}" in command_template
+    assert "{source_ip_q}" in command_template
+    assert "{destination_ip_q}" in command_template
+    assert "{service_q}" in command_template
 
 
 def _engine_from_xlsm(wb):
@@ -259,12 +271,112 @@ def test_secui_cli_macro_generates_fw_set_srule_commands():
     src = open(VBA_POLICY, encoding="utf-8").read()
     assert "Public Sub ConvertRequestsToSecuiCli" in src
     assert "SECUI_CLI_SHEET" in src
+    assert "VENDOR_CLI_TEMPLATE_SHEET" in src
     assert "WriteSecuiCliHeaders" in src
+    assert "WriteVendorCliTemplateHeaders" in src
     assert "LoadSecuiFirewalls(firewallsSheet)" in src
+    assert "LoadVendorCliTemplate(templateSheet, " in src
     assert "CopySecuiCliRows" in src
+    assert "RenderVendorCliTemplate" in src
     assert "SecuiCliCommand" in src
-    assert '"fw set srule name "' in src
+    assert "DefaultVendorCliTemplate" in src
+    assert "{policy_name_q}" in src
     assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
+
+
+def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
+    from pyopenvba import excel as ex
+
+    def clean(value):
+        return " ".join(str(value).strip().replace("\r", " ").replace("\n", " ").replace("\t", " ").split())
+
+    def quote(value):
+        return f'"{clean(value).replace(chr(34), chr(39))}"'
+
+    def service(proto, port):
+        return clean(f"{proto.lower()}/{str(port).strip()}")
+
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    template = wb["vendor_cli_templates"].cell(2, 4).value
+    assert isinstance(template, str)
+    g = ex.ExcelFile(xlsm_path)
+    try:
+        src = g.get_module("FirewallPolicyAutomation")
+    finally:
+        g.close()
+    vba_default = re.search(r'DefaultVendorCliTemplate = "([^"]+)"', src)
+    assert vba_default is not None
+    assert template == vba_default.group(1)
+    assert 'targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")' in src
+    assert "For Each firewallValue In targetFirewalls" in src
+    assert "WriteSecuiCliRow requestsSheet, secuiCliSheet, requestRow, cliRow, firewallName, cliTemplate" in src
+    assert "cliRow = cliRow + 1" in src
+
+    request = {
+        "doc_no": "REQ-1",
+        "targets": "SECUI-FW-01;SECUI-FW-02",
+        "source": "10.10.10.5",
+        "destination": "172.16.1.10",
+        "protocol": "TCP",
+        "port": "443",
+        "purpose": "HTTPS 업무 연동",
+        "note": "",
+        "status": "OK",
+    }
+
+    rows = []
+    for firewall_name in request["targets"].split(";"):
+        policy_name = clean(
+            "_".join([
+                request["doc_no"],
+                firewall_name,
+                request["protocol"],
+                request["port"],
+                request["source"],
+                request["destination"],
+            ])
+        )[:120]
+        description = clean(f"{request['purpose']} / {request['status']}")[:255]
+        command = template
+        command = command.replace("{policy_name_q}", quote(policy_name))
+        command = command.replace("{source_ip_q}", quote(request["source"]))
+        command = command.replace("{destination_ip_q}", quote(request["destination"]))
+        command = command.replace("{service_q}", quote(service(request["protocol"], request["port"])))
+        command = command.replace("{description_q}", quote(description))
+        command = command.replace("{firewall_name}", clean(firewall_name))
+        rows.append((firewall_name, policy_name, command))
+
+    assert len(rows) == 2
+    assert rows[0][0] == "SECUI-FW-01"
+    assert rows[1][0] == "SECUI-FW-02"
+    assert rows[0][2] == (
+        'fw set srule name "REQ-1_SECUI-FW-01_TCP_443_10.10.10.5_172.16.1.10" '
+        'action allow src "10.10.10.5" dst "172.16.1.10" service "tcp/443" '
+        'log enable enable yes description "HTTPS 업무 연동 / OK" # device=SECUI-FW-01'
+    )
+    assert rows[1][2] == rows[0][2].replace("SECUI-FW-01", "SECUI-FW-02")
+    assert service("ICMP", "") == "icmp/"
+
+
+def test_secui_cli_vba_preserves_blank_port_service_suffix():
+    src = open(VBA_POLICY, encoding="utf-8").read()
+    assert 'SecuiCliServiceText = CleanSecuiText(proto & "/" & portText)' in src
+    assert "If Len(Trim$(portText)) = 0 Then" not in src
+
+
+def test_firewall_excel_benchmark_doc_covers_secui_and_management_repos():
+    doc = open(os.path.join(ROOT, "docs", "firewall-excel-benchmark.md"), encoding="utf-8").read()
+    assert "SECUI" in doc
+    assert "SECUI-specific public management repositories are scarce" in doc
+    for expected in (
+        "CactuseSecurity/firewall-orchestrator",
+        "imthenachoman/pfSense-Firewall-Rules-Manager",
+        "martimy/firewall_policy_analyzer",
+        "automateyournetwork/netclaw",
+        "olafhartong/parsoalto",
+    ):
+        assert expected in doc
+    assert "vendor_cli_templates" in doc
 
 
 def test_route_macro_colors_target_firewall_cell():

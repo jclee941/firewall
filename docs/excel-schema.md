@@ -14,6 +14,7 @@
 | `processing_log` | 처리 로그 |
 | `secui_batch` | SECUI 배치 양식 |
 | `secui_cli` | SECUI CLI 초안 |
+| `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
 | `sample-request-format` | 신청서 예시 |
 | `usage` | 사용 순서 |
 
@@ -91,3 +92,5 @@
 ## SECUI sheets
 
 `secui_batch`와 `secui_cli`는 `requests.대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다.
+
+`vendor_cli_templates`는 CLI 명령어를 엑셀 데이터로 관리합니다. `vendor=SECUI`, `enabled=Y`인 첫 번째 행의 `command_template`을 사용하며, `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}` 같은 placeholder를 신청서 값으로 치환합니다. `_q`가 붙은 placeholder는 CLI용 따옴표로 감싼 값입니다.

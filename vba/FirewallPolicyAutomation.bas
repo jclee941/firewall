@@ -5,6 +5,7 @@ Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const REQUESTS_SHEET As String = "requests"
 Private Const SECUI_BATCH_SHEET As String = "secui_batch"
 Private Const SECUI_CLI_SHEET As String = "secui_cli"
+Private Const VENDOR_CLI_TEMPLATE_SHEET As String = "vendor_cli_templates"
 Private Const LOG_SHEET As String = "processing_log"
 Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
 
@@ -44,6 +45,10 @@ Private Const SECUI_CLI_LAST_COL As Long = 9
 Private Const FW_COL_NAME As Long = 1
 Private Const FW_COL_VENDOR As Long = 2
 Private Const FW_COL_ENABLED As Long = 3
+Private Const CLI_TEMPLATE_COL_VENDOR As Long = 1
+Private Const CLI_TEMPLATE_COL_ENABLED As Long = 3
+Private Const CLI_TEMPLATE_COL_COMMAND As Long = 4
+Private Const CLI_TEMPLATE_COL_NOTE As Long = 5
 
 Private mUserAliases As Object
 Private mParseSheetName As String
@@ -56,6 +61,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Dim logSheet As Worksheet
     Dim secuiBatchSheet As Worksheet
     Dim secuiCliSheet As Worksheet
+    Dim vendorCliTemplateSheet As Worksheet
 
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
@@ -64,6 +70,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Set logSheet = EnsureSheet(LOG_SHEET)
     Set secuiBatchSheet = EnsureSheet(SECUI_BATCH_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
+    Set vendorCliTemplateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
 
     WriteRequestHeaders requestsSheet
     WriteFirewallHeaders firewallsSheet
@@ -72,12 +79,14 @@ Public Sub SetupFirewallAutomationWorkbook()
     WriteLogHeaders logSheet
     WriteSecuiBatchHeaders secuiBatchSheet
     WriteSecuiCliHeaders secuiCliSheet
+    WriteVendorCliTemplateHeaders vendorCliTemplateSheet
     FormatRequestsSheet requestsSheet
     FormatFirewallsSheet firewallsSheet
     FormatGenericSheet firewallRangeSheet, "A:G"
     FormatLogSheet logSheet
     FormatSecuiBatchSheet secuiBatchSheet
     FormatSecuiCliSheet secuiCliSheet
+    FormatGenericSheet vendorCliTemplateSheet, "A:E"
 
     MsgBox "방화벽 정책 자동화 시트 구성이 완료되었습니다.", vbInformation
 End Sub
@@ -196,7 +205,9 @@ Public Sub ConvertRequestsToSecuiCli()
     Dim requestsSheet As Worksheet
     Dim firewallsSheet As Worksheet
     Dim secuiCliSheet As Worksheet
+    Dim templateSheet As Worksheet
     Dim secuiFirewalls As Object
+    Dim cliTemplate As Object
     Dim requestRow As Long
     Dim cliRow As Long
     Dim lastRow As Long
@@ -205,15 +216,18 @@ Public Sub ConvertRequestsToSecuiCli()
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
+    Set templateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
     WriteFirewallHeaders firewallsSheet
     WriteSecuiCliHeaders secuiCliSheet
+    WriteVendorCliTemplateHeaders templateSheet
     Set secuiFirewalls = LoadSecuiFirewalls(firewallsSheet)
+    Set cliTemplate = LoadVendorCliTemplate(templateSheet, "SECUI")
     secuiCliSheet.Rows("2:" & secuiCliSheet.Rows.Count).Clear
 
     lastRow = requestsSheet.Cells(requestsSheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
     cliRow = 2
     For requestRow = REQ_DATA_START_ROW To lastRow
-        convertedRows = convertedRows + CopySecuiCliRows(requestsSheet, secuiCliSheet, secuiFirewalls, requestRow, cliRow)
+        convertedRows = convertedRows + CopySecuiCliRows(requestsSheet, secuiCliSheet, secuiFirewalls, cliTemplate, requestRow, cliRow)
     Next requestRow
 
     FormatSecuiCliSheet secuiCliSheet
@@ -239,7 +253,7 @@ Private Function CopySecuiBatchRows(ByVal requestsSheet As Worksheet, ByVal secu
     CopySecuiBatchRows = written
 End Function
 
-Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal requestRow As Long, ByRef cliRow As Long) As Long
+Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal cliTemplate As Object, ByVal requestRow As Long, ByRef cliRow As Long) As Long
     Dim targetFirewalls As Variant
     Dim firewallValue As Variant
     Dim firewallName As String
@@ -249,7 +263,7 @@ Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiC
     For Each firewallValue In targetFirewalls
         firewallName = Trim$(CStr(firewallValue))
         If Len(firewallName) > 0 And secuiFirewalls.Exists(SecuiFirewallKey(firewallName)) Then
-            WriteSecuiCliRow requestsSheet, secuiCliSheet, requestRow, cliRow, firewallName
+            WriteSecuiCliRow requestsSheet, secuiCliSheet, requestRow, cliRow, firewallName, cliTemplate
             cliRow = cliRow + 1
             written = written + 1
         End If
@@ -290,6 +304,33 @@ Private Function SecuiFirewallKey(ByVal firewallName As String) As String
     SecuiFirewallKey = LCase$(Trim$(firewallName))
 End Function
 
+Private Function LoadVendorCliTemplate(ByVal templateSheet As Worksheet, ByVal vendorFilter As String) As Object
+    Dim result As Object
+    Dim lastRow As Long
+    Dim rowIndex As Long
+    Dim vendorName As String
+    Dim commandTemplate As String
+
+    Set result = CreateObject("Scripting.Dictionary")
+    result("command_template") = DefaultVendorCliTemplate()
+    result("review_note") = DefaultVendorCliReviewNote()
+
+    lastRow = templateSheet.Cells(templateSheet.Rows.Count, CLI_TEMPLATE_COL_VENDOR).End(xlUp).Row
+    For rowIndex = 2 To lastRow
+        vendorName = UCase$(Trim$(CStr(templateSheet.Cells(rowIndex, CLI_TEMPLATE_COL_VENDOR).Value)))
+        commandTemplate = Trim$(CStr(templateSheet.Cells(rowIndex, CLI_TEMPLATE_COL_COMMAND).Value))
+        If vendorName = UCase$(Trim$(vendorFilter)) _
+                And FirewallRowEnabled(templateSheet.Cells(rowIndex, CLI_TEMPLATE_COL_ENABLED).Value) _
+                And Len(commandTemplate) > 0 Then
+            result("command_template") = commandTemplate
+            result("review_note") = CStr(templateSheet.Cells(rowIndex, CLI_TEMPLATE_COL_NOTE).Value)
+            Exit For
+        End If
+    Next rowIndex
+
+    Set LoadVendorCliTemplate = result
+End Function
+
 Private Sub WriteSecuiBatchRow(ByVal requestsSheet As Worksheet, ByVal secuiBatchSheet As Worksheet, ByVal requestRow As Long, ByVal secuiRow As Long, ByVal firewallName As String)
     Dim proto As String
     Dim portText As String
@@ -322,40 +363,96 @@ Private Sub WriteSecuiBatchRow(ByVal requestsSheet As Worksheet, ByVal secuiBatc
     secuiBatchSheet.Cells(secuiRow, 20).Value = requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value
 End Sub
 
-Private Sub WriteSecuiCliRow(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal requestRow As Long, ByVal cliRow As Long, ByVal firewallName As String)
+Private Sub WriteSecuiCliRow(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal requestRow As Long, ByVal cliRow As Long, ByVal firewallName As String, ByVal cliTemplate As Object)
     Dim policyName As String
+    Dim reviewNote As String
     policyName = SecuiPolicyName(requestsSheet, requestRow, firewallName)
+    reviewNote = Trim$(CStr(cliTemplate("review_note")))
+    If Len(reviewNote) = 0 Then reviewNote = DefaultVendorCliReviewNote()
 
     secuiCliSheet.Cells(cliRow, 1).Value = cliRow - 1
     secuiCliSheet.Cells(cliRow, 2).Value = firewallName
     secuiCliSheet.Cells(cliRow, 3).Value = policyName
-    secuiCliSheet.Cells(cliRow, 4).Value = SecuiCliCommand(requestsSheet, requestRow, firewallName, policyName)
-    secuiCliSheet.Cells(cliRow, 5).Value = "장비 CLI에서 'fw set srule help'로 옵션명 확인 후 적용"
+    secuiCliSheet.Cells(cliRow, 4).Value = SecuiCliCommand(requestsSheet, requestRow, firewallName, policyName, CStr(cliTemplate("command_template")))
+    secuiCliSheet.Cells(cliRow, 5).Value = reviewNote
     secuiCliSheet.Cells(cliRow, 6).Value = requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value
     secuiCliSheet.Cells(cliRow, 7).Value = requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value
     secuiCliSheet.Cells(cliRow, 8).Value = requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value
     secuiCliSheet.Cells(cliRow, 9).Value = requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value
 End Sub
 
-Private Function SecuiCliCommand(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal firewallName As String, ByVal policyName As String) As String
+Private Function SecuiCliCommand(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal firewallName As String, ByVal policyName As String, ByVal commandTemplate As String) As String
     Dim proto As String
     Dim portText As String
-    Dim srcIp As String
-    Dim dstIp As String
-    Dim descText As String
 
     proto = LCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value)))
     portText = Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value))
-    srcIp = Trim$(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value))
-    dstIp = Trim$(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value))
-    descText = SecuiDescription(requestsSheet, requestRow)
 
-    SecuiCliCommand = "fw set srule name " & SecuiCliQuote(policyName) & _
-        " action allow src " & SecuiCliQuote(srcIp) & _
-        " dst " & SecuiCliQuote(dstIp) & _
-        " service " & SecuiCliQuote(proto & "/" & portText) & _
-        " log enable enable yes description " & SecuiCliQuote(descText) & _
-        " # device=" & CleanSecuiText(firewallName)
+    SecuiCliCommand = RenderVendorCliTemplate( _
+        commandTemplate, _
+        firewallName, _
+        policyName, _
+        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), _
+        proto, _
+        portText, _
+        SecuiCliServiceText(proto, portText), _
+        SecuiDescription(requestsSheet, requestRow), _
+        CStr(requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_START_DATE).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_END_DATE).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_PURPOSE).Value), _
+        CStr(requestsSheet.Cells(requestRow, COL_NOTE).Value))
+End Function
+
+Private Function RenderVendorCliTemplate(ByVal commandTemplate As String, ByVal firewallName As String, ByVal policyName As String, ByVal sourceIp As String, ByVal sourceName As String, ByVal destinationIp As String, ByVal destinationName As String, ByVal protocolText As String, ByVal portText As String, ByVal serviceText As String, ByVal descriptionText As String, ByVal requestTeam As String, ByVal requestDocNo As String, ByVal sourceFile As String, ByVal sourceRow As String, ByVal startDate As String, ByVal endDate As String, ByVal purposeText As String, ByVal noteText As String) As String
+    Dim rendered As String
+    rendered = commandTemplate
+    If Len(Trim$(rendered)) = 0 Then rendered = DefaultVendorCliTemplate()
+
+    rendered = ReplaceSecuiToken(rendered, "firewall_name", firewallName)
+    rendered = ReplaceSecuiToken(rendered, "policy_name", policyName)
+    rendered = ReplaceSecuiToken(rendered, "source_ip", sourceIp)
+    rendered = ReplaceSecuiToken(rendered, "source_name", sourceName)
+    rendered = ReplaceSecuiToken(rendered, "destination_ip", destinationIp)
+    rendered = ReplaceSecuiToken(rendered, "destination_name", destinationName)
+    rendered = ReplaceSecuiToken(rendered, "protocol", protocolText)
+    rendered = ReplaceSecuiToken(rendered, "port", portText)
+    rendered = ReplaceSecuiToken(rendered, "service", serviceText)
+    rendered = ReplaceSecuiToken(rendered, "description", descriptionText)
+    rendered = ReplaceSecuiToken(rendered, "request_team", requestTeam)
+    rendered = ReplaceSecuiToken(rendered, "request_doc_no", requestDocNo)
+    rendered = ReplaceSecuiToken(rendered, "source_file", sourceFile)
+    rendered = ReplaceSecuiToken(rendered, "source_row", sourceRow)
+    rendered = ReplaceSecuiToken(rendered, "start_date", startDate)
+    rendered = ReplaceSecuiToken(rendered, "end_date", endDate)
+    rendered = ReplaceSecuiToken(rendered, "purpose", purposeText)
+    rendered = ReplaceSecuiToken(rendered, "note", noteText)
+    RenderVendorCliTemplate = rendered
+End Function
+
+Private Function ReplaceSecuiToken(ByVal commandText As String, ByVal tokenName As String, ByVal tokenValue As String) As String
+    Dim cleanedValue As String
+    cleanedValue = CleanSecuiText(tokenValue)
+    ReplaceSecuiToken = Replace(commandText, "{" & tokenName & "}", cleanedValue)
+    ReplaceSecuiToken = Replace(ReplaceSecuiToken, "{" & tokenName & "_q}", SecuiCliQuote(cleanedValue))
+End Function
+
+Private Function SecuiCliServiceText(ByVal proto As String, ByVal portText As String) As String
+    SecuiCliServiceText = CleanSecuiText(proto & "/" & portText)
+End Function
+
+Private Function DefaultVendorCliTemplate() As String
+    DefaultVendorCliTemplate = "fw set srule name {policy_name_q} action allow src {source_ip_q} dst {destination_ip_q} service {service_q} log enable enable yes description {description_q} # device={firewall_name}"
+End Function
+
+Private Function DefaultVendorCliReviewNote() As String
+    DefaultVendorCliReviewNote = "장비 CLI에서 'fw set srule help'로 옵션명 확인 후 적용"
 End Function
 
 Private Function SecuiCliQuote(ByVal value As String) As String
@@ -1133,6 +1230,18 @@ End Sub
 
 Private Sub WriteSecuiCliHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:I1").Value = Array("No", "장비명", "정책명", "명령어", "검토메모", "신청부서", "신청번호", "원본파일", "원본행")
+End Sub
+
+Private Sub WriteVendorCliTemplateHeaders(ByVal worksheet As Worksheet)
+    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
+        worksheet.Range("A1:E1").Value = Array("vendor", "template_name", "enabled", "command_template", "review_note")
+        worksheet.Range("A2:E2").Value = Array( _
+            "SECUI", _
+            "default_allow_srule", _
+            "Y", _
+            DefaultVendorCliTemplate(), _
+            DefaultVendorCliReviewNote())
+    End If
 End Sub
 
 Private Sub AppendProcessingLog(ByVal worksheet As Worksheet, ByVal sourceFileName As String, ByVal statusText As String, ByVal mergedRows As Long, ByVal messageText As String)
