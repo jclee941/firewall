@@ -98,9 +98,9 @@ def test_alias_sheet_rows():
 
 
 def test_alias_sheet_standard_via_builtin():
-    # `standard` side may itself be an alias (Source -> \ucd9c\ubc1c\uc9c0) and still resolve.
+    # `standard` side may itself be an alias (Src Name -> \ucd9c\ubc1c\uc9c0) and still resolve.
     # your_column uses names the built-in map does NOT know.
-    rows = [["Source", "zzfromcol"], ["Destination", "zztocol"]]
+    rows = [["Src Name", "zzfromcol"], ["Dst Name", "zztocol"]]
     aliases = aliases_from_rows(rows)
     assert canonical_with_user_aliases("zzfromcol", aliases) == "\ucd9c\ubc1c\uc9c0"
     assert canonical_with_user_aliases("zztocol", aliases) == "\ubaa9\uc801\uc9c0"

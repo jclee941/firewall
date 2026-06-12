@@ -25,7 +25,7 @@ PY = sys.executable
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
+from tests.route_oracle import Firewall, Network, RouteEngine, RoutingPath  # noqa: E402
 
 
 def _build():
@@ -64,6 +64,8 @@ def test_modules_present(xlsm_path):
         assert "Module1" not in names
         assert "AnalyzeRequestRoutes" in g.get_module("FirewallRouteAnalysis")
         assert "MergeFirewallRequestFolder" in g.get_module("FirewallPolicyAutomation")
+        assert "ConvertRequestsToSecuiBatch" in g.get_module("FirewallPolicyAutomation")
+        assert "ConvertRequestsToSecuiCli" in g.get_module("FirewallPolicyAutomation")
         assert "SetupFirewallAutomationWorkbook" in g.get_module("FirewallPolicyAutomation")
     finally:
         g.close()
@@ -72,11 +74,10 @@ def test_modules_present(xlsm_path):
 def test_sheets_and_headers(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
 
-    # All 8 sheets must exist (matches CI/release verification, which the
-    # previous version of this test did not — it omitted sample-request-format).
     expected_sheets = {
         "requests", "firewalls", "network_definitions", "routing_paths",
         "settings", "processing_log", "sample-request-format", "usage",
+        "secui_batch", "secui_cli",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -89,6 +90,18 @@ def test_sheets_and_headers(xlsm_path):
                           "ingress_if", "egress_if", "path_order", "enabled"],
         "settings": ["key", "value", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
+        "secui_batch": [
+            "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c",
+            "\ucd9c\ubc1c\uc9c0\uba85", "\ubaa9\uc801\uc9c0\uc8fc\uc18c", "\ubaa9\uc801\uc9c0\uba85",
+            "\uc11c\ube44\uc2a4", "\ud504\ub85c\ud1a0\ucf5c", "\ubaa9\uc801\uc9c0\ud3ec\ud2b8",
+            "\ub3d9\uc791", "\ub85c\uadf8", "\uc0ac\uc6a9\uc5ec\ubd80", "\uc2dc\uc791\uc77c",
+            "\uc885\ub8cc\uc77c", "\uc124\uba85", "\uc2e0\uccad\ubd80\uc11c",
+            "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
+        ],
+        "secui_cli": [
+            "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
+            "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
+        ],
         "usage": ["Step", "Action"],
     }
     for sheet, headers in expected_headers.items():
@@ -98,7 +111,7 @@ def test_sheets_and_headers(xlsm_path):
 
     # requests: exactly 25 columns; canonical leaf headers on row 2 (row 1 is the
     # cosmetic group-label band). Mirrors VBA WriteRequestHeaders.
-    from build_xlsm import REQUESTS_HEADERS  # noqa: E402
+    from scripts.build_xlsm import REQUESTS_HEADERS  # noqa: E402
     assert len(REQUESTS_HEADERS) == 25
     req = wb["requests"]
     assert req.max_column == 25, f"requests max_column={req.max_column}"
@@ -234,6 +247,30 @@ def test_policy_module_has_no_merge_time_legacy_firewall_matching():
         assert dead not in src, f"obsolete helper {dead} still present"
     # CopyRequestRow must no longer pre-fill target_firewalls before route analysis
     assert "COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls" not in src
+
+
+def test_secui_batch_macro_splits_multi_hop_targets():
+    src = open(VBA_POLICY, encoding="utf-8").read()
+    assert "Public Sub ConvertRequestsToSecuiBatch" in src
+    assert "SECUI_BATCH_SHEET" in src
+    assert "LoadSecuiFirewalls(firewallsSheet)" in src
+    assert 'vendorName = UCase$(Trim$(CStr(firewallsSheet.Cells(rowIndex, FW_COL_VENDOR).Value)))' in src
+    assert 'vendorName = "SECUI"' in src
+    assert "FirewallRowEnabled(firewallsSheet.Cells(rowIndex, FW_COL_ENABLED).Value)" in src
+    assert 'targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")' in src
+    assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
+
+
+def test_secui_cli_macro_generates_fw_set_srule_commands():
+    src = open(VBA_POLICY, encoding="utf-8").read()
+    assert "Public Sub ConvertRequestsToSecuiCli" in src
+    assert "SECUI_CLI_SHEET" in src
+    assert "WriteSecuiCliHeaders" in src
+    assert "LoadSecuiFirewalls(firewallsSheet)" in src
+    assert "CopySecuiCliRows" in src
+    assert "SecuiCliCommand" in src
+    assert '"fw set srule name "' in src
+    assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
 
 
 def test_duplicate_marking_runs_after_route_analysis():

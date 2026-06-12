@@ -87,8 +87,11 @@ def test_header_key_normalizes():
 
 def test_canonical_aliases():
     assert canonical_header_name("srcip") == "출발지ip"
+    assert canonical_header_name("source") == "출발지ip"
     assert canonical_header_name("출발ip") == "출발지ip"
     assert canonical_header_name("dstip") == "목적지ip"
+    assert canonical_header_name("destination") == "목적지ip"
+    assert canonical_header_name("destiation") == "목적지ip"
     assert canonical_header_name("protocol") == "프로토콜"
     assert canonical_header_name("목적지포트") == "포트"
     assert canonical_header_name("unknowncol") == "unknowncol"
@@ -250,6 +253,19 @@ def test_parse_varied_layout(tmp_path, engine):
     # protocol uppercased by parser
     assert parsed[0]["protocol"] == "TCP"
     assert parsed[1]["protocol"] == "UDP"
+
+
+def test_parse_plain_english_source_destination_headers(tmp_path):
+    rows = [
+        ["No", "Source", "Destiation", "Protocol", "Port"],
+        [1, "10.10.10.5", "10.20.20.5", "tcp", "443"],
+    ]
+    p = _build_xlsx(tmp_path, "english-source-destination.xlsx", rows)
+
+    parsed = parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
+
+    assert parsed[0]["source_ip"] == "10.10.10.5"
+    assert parsed[0]["dest_ip"] == "10.20.20.5"
 
 
 # --------------------------------------------------------------------------- #

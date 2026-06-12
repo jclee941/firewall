@@ -21,13 +21,15 @@
 | `firewalls` | 방화벽 장비 목록 |
 | `routing_paths` | zone 사이 라우팅 경로 |
 | `settings` | 운영 설정 |
+| `secui_batch` | SECUI 장비별 배치 업로드 양식 변환 결과 |
+| `secui_cli` | SECUI 장비별 CLI 적용 명령 초안 |
 | `sample-request-format` | 신청서 양식 예시 |
 | `processing_log` | 파일별 처리 결과/오류 로그 |
 | `usage` | 사용 순서 |
 
 ## 신청서 xlsx 구조
 
-신청서 폴더에 들어가는 각 `.xlsx/.xlsm/.xls` 파일은 `출발지IP`/`목적지IP` 등 인식 가능한 컬럼이 있는 헤더 행을 가져야 합니다(`No`/`번호`는 권장이나 필수는 아님). 매크로는 모든 시트의 상단 30행을 훑어 헤더 점수가 가장 높은 시트와 행을 자동으로 선택하므로, 데이터가 첫 번째 시트가 아니어도 됩니다(동점이면 가장 왼쪽 시트).
+신청서 폴더에 들어가는 각 `.xlsx/.xlsm/.xls` 파일은 `출발지IP`/`목적지IP` 등 인식 가능한 컬럼이 있는 헤더 행을 가져야 합니다(`Source`/`Destination`/`Destiation`도 IP 컬럼 별칭으로 인식, `No`/`번호`는 권장이나 필수는 아님). 매크로는 모든 시트의 상단 30행을 훑어 헤더 점수가 가장 높은 시트와 행을 자동으로 선택하므로, 데이터가 첫 번째 시트가 아니어도 됩니다(동점이면 가장 왼쪽 시트).
 
 ```text
 출발지IP | 출발지 | 목적지IP | 목적지 | 프로토콜 | 포트 | 방향 | 용도 | 시작일 | 종료일 | 비고
@@ -61,6 +63,18 @@
 | validation_message | 자동 | 문자열 | 검증 메시지/사유 |
 | match_details | 자동 | 문자열 | zone 결정과 hop 선택 근거 |
 
+## secui_batch 시트
+
+`ConvertRequestsToSecuiBatch` 매크로는 `requests` 시트의 분석 결과를 SECUI 장비별 배치 행으로 변환합니다. `적용대상방화벽` 값이 `SECUI-FW-01;SECUI-FW-02`처럼 멀티홉이면 방화벽별로 2개 행을 생성합니다. 단, `firewalls.vendor`가 `SECUI`이고 `enabled`가 꺼져 있지 않은 장비만 출력합니다. `적용대상방화벽`이 비어 있는 `NO_PATH`/`ZONE_UNRESOLVED`/`INTRA_ZONE` 행은 배치 대상이 아니므로 건너뜁니다.
+
+컬럼 순서: `No`, `장비명`, `정책명`, `출발지주소`, `출발지명`, `목적지주소`, `목적지명`, `서비스`, `프로토콜`, `목적지포트`, `동작`, `로그`, `사용여부`, `시작일`, `종료일`, `설명`, `신청부서`, `신청번호`, `원본파일`, `원본행`.
+
+## secui_cli 시트
+
+`ConvertRequestsToSecuiCli` 매크로는 `requests` 시트의 분석 결과를 SECUI 장비별 CLI 명령 초안으로 변환합니다. `firewalls.vendor`가 `SECUI`이고 `enabled`가 꺼져 있지 않은 장비만 출력하며, 명령어는 공개 BLUEMAX NGF 자료의 정적 룰 적용 계열인 `fw set srule` 템플릿으로 생성합니다. 실제 적용 전에는 대상 장비에서 `fw set srule help`로 펌웨어별 옵션명을 확인해야 합니다.
+
+컬럼 순서: `No`, `장비명`, `정책명`, `명령어`, `검토메모`, `신청부서`, `신청번호`, `원본파일`, `원본행`.
+
 ## network_definitions 시트
 
 | 컬럼 | 필수 | 형식 | 설명 |
@@ -80,7 +94,7 @@
 | 컬럼 | 필수 | 형식 | 설명 |
 |---|---:|---|---|
 | `firewall_name` | 예 | 문자열 | 방화벽 식별자. `routing_paths.firewall_name`과 같은 값 |
-| `vendor` | 아니오 | 문자열 | 제조사 (참고용) |
+| `vendor` | 아니오 | 문자열 | 제조사. `SECUI`이면 `ConvertRequestsToSecuiBatch`/`ConvertRequestsToSecuiCli` 출력 대상 |
 | `enabled` | 예 | `Y`/`TRUE` 등 | 사용 여부. FALSE면 라우팅 hop에서도 제외 (`Y`,`YES`,`TRUE`,`1`,빈값=사용) |
 | `inside_cidr` | 아니오 | CIDR/IP (`;` 구분) | 내부 대역. 자동 모드에서 이 CIDR이 한 졸(zone)이 됨 |
 | `outside_cidr` | 아니오 | CIDR/IP (`;` 구분) | 외부 대역. inside↔outside를 연결해 경로 자동 생성 |
