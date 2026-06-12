@@ -1,46 +1,83 @@
-# AGENTS.md
+# PROJECT KNOWLEDGE BASE
 
-Excel-native (VBA) tool that merges firewall-policy request spreadsheets and computes which firewalls a src→dst flow traverses, via zone resolution + routing-graph BFS. No PowerQuery (DRM constraint). Build/test tooling is Python; the shipped artifact is a macro-enabled `.xlsm`.
+Generated: 2026-06-12
+Commit: 26721d7
+Branch: master
+
+## Overview
+
+Excel-native VBA tool for merging firewall-policy request spreadsheets and computing `대상방화벽` from user-defined firewall range rows. No PowerQuery; Linux build/test tooling produces the shipped macro-enabled `.xlsm`.
+
+## Structure
+
+```text
+.
+├── vba/                  # shipped VBA modules injected into vbaProject.bin
+├── scripts/              # Linux builders/scaffolders for xlsm and request-folder
+├── tests/                # Python oracle/spec tests plus workbook structure checks
+├── docs/                 # operator schema and Excel-native runbook
+├── request-folder/       # sample request tree; xlsx files are generated/churn-prone
+└── .github/workflows/    # CI and tag-driven release automation
+```
+
+## Where To Look
+
+| Task | Location | Notes |
+| --- | --- | --- |
+| Change route/range calculation | `tests/route_oracle.py`, `vba/FirewallRouteAnalysis.bas`, `tests/test_route_oracle.py` | Python oracle and VBA must stay behavior-identical |
+| Change workbook sheets/headers/seeds | `scripts/build_xlsm.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py` | Build seed and VBA setup seed must stay in sync |
+| Change request parser behavior | `tests/request_parser_oracle.py`, `vba/FirewallPolicyAutomation.bas`, parser tests | Header aliases and merged-cell behavior are mirrored |
+| Change SECUI output | `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py`, docs | Batch and CLI split `대상방화벽` by `;` |
+| Release | `.github/workflows/release.yml` | Tags `v*` build, test, verify, bundle, publish |
 
 ## Commands
 
 ```bash
-./.venv/bin/python -m pytest tests/ -q     # run the algorithm spec tests
-./.venv/bin/python -m pytest tests/test_route_oracle.py::test_scenario1_ok_single_hop -v   # single test
-./.venv/bin/python scripts/build_xlsm.py   # build dist/firewall-policy-automation.xlsm
+./.venv/bin/python -m pytest tests/ -q
+./.venv/bin/python -m pytest tests/test_route_oracle.py -v
+./.venv/bin/python scripts/build_xlsm.py
+./.venv/bin/python scripts/make_request_folder.py
 ```
 
-Use the committed venv `./.venv/bin/python` (pins match `requirements.txt`: pyOpenVBA 2.0.0, openpyxl 3.1.5, pytest 9.0.3). Build runs on Linux — no Windows/Excel/PowerShell/COM.
+Use committed `./.venv/bin/python`; dependency pins live in `requirements.txt` (`pyOpenVBA==2.0.0`, `openpyxl==3.1.5`, `pytest==9.0.3`). Build runs on Linux without Windows, Excel, PowerShell, or COM.
 
-## Architecture: the two sources of truth must stay in sync
+## Current Workbook Contract
 
-- `tests/route_oracle.py` is the **binding contract / specification** for the route algorithm. Its module docstring states the exact rules (longest-prefix zone match, deterministic BFS, tie-break key `"{path_order:06d}|{firewall_name}|{to_zone}"`, status set, direction handling, legacy fallback).
-- `vba/FirewallRouteAnalysis.bas` **must mirror `route_oracle.py` exactly**. The Python tests double as the VBA spec.
-- `vba/FirewallPolicyAutomation.bas` is the second module: folder merge, header parsing, merged-cell handling, sheet setup macros.
-- `tests/test_route_oracle.py` are scenario tests *against the oracle* — they do not execute VBA. LibreOffice macro execution is not available here, so changing algorithm behavior means editing oracle + `.bas` together and updating these tests.
+- `requests` has exactly 25 columns. Row 1 is the cosmetic group band; row 2 is canonical headers; data starts row 3.
+- Column 7 display header is `대상방화벽`; internal result field remains `target_firewalls`; values join with `;`.
+- `방화벽경로` joins matched firewall rows with `>`.
+- `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거` are display/debug outputs from the first/selected matched range rows.
+- Operator input sheets are `firewalls`, `firewall_ranges`, `settings`, `header_aliases`, `vendor_cli_templates`.
+- `network_definitions`, `routing_paths`, zone graph BFS, and legacy fallback are removed. Do not reintroduce them.
 
-When you change route logic: edit `route_oracle.py`, `FirewallRouteAnalysis.bas`, and the scenario tests in one change. Don't touch only one.
+## Route Algorithm
 
-## Build pipeline (scripts/build_xlsm.py)
+`firewall_ranges` is authoritative. A request row matches enabled range rows when:
 
-pyOpenVBA injects both `.bas` modules into a real `vbaProject.bin` and deletes the default `Module1`; openpyxl then seeds all sheets while preserving the VBA. Seed data (FIREWALLS, NETWORK_DEFS, ROUTING_PATHS, SETTINGS, REQUESTS_HEADERS, etc.) lives as Python constants in `build_xlsm.py` and **must stay in sync with the VBA `Write*Headers` seeds** (incl. the `settings` sheet, which is `key,value,설명` in BOTH `build_xlsm.py` SETTINGS and VBA `WriteSettings`). `tests/test_xlsm_structure.py` locks per-sheet schemas and round-trips the injected VBA back against `vba/*.bas` (Korean comments are codepage-lossy on read, so that test compares ASCII-normalized source).
+1. `firewalls.enabled` and `firewall_ranges.enabled` are truthy (`Y`, `YES`, `TRUE`, `1`).
+2. request source overlaps `source_cidr`.
+3. request destination overlaps `destination_cidr`.
+4. request direction and range direction match, or either side is `BOTH`/blank.
+5. matches sort by `path_order`, row order, firewall name.
 
-CI/release assert structural invariants you must not silently break:
-- `requests` sheet has exactly **25 columns** (`wb["requests"].max_column == 25`). Layout is a 2-row header band: row 1 = cosmetic group labels (출발지/목적지 merged over IP+설명), row 2 = canonical leaf headers, data from row 3.
-- Modules `FirewallPolicyAutomation` and `FirewallRouteAnalysis` present, `Module1` absent.
-- All 8 sheets present with exact header rows (asserted by `test_sheets_and_headers`).
-- Injected VBA module source must match `vba/*.bas` (`test_injected_vba_modules_match_source_files`).
+Statuses are `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, plus duplicate markers from merge post-processing.
 
-## CI / release
+## Build Pipeline
 
-- `.github/workflows/ci.yml`: triggers on **`master`** only (push + PR). Runs pytest → build → artifact-structure verification.
-- `.github/workflows/release.yml`: triggers on `v*` tags. Build + test + verify, then `gh release` with the `.xlsm` attached. Release: `git tag v1.0.2 && git push origin v1.0.2`.
-- Single-branch repo: `master` (no `main`). Commits follow Conventional Commits (`fix:`, `chore:`, `ci:`, `docs:`, `review:`).
+`scripts/build_xlsm.py` injects `vba/FirewallPolicyAutomation.bas` and `vba/FirewallRouteAnalysis.bas`, removes default `Module1`, seeds workbook sheets, applies UX formatting, and preserves VBA. `tests/test_xlsm_structure.py` verifies module presence, sheet headers, Korean codepage handling, target-cell highlight, release workflow sheet expectations, and source-to-injected module parity.
 
-## Conventions / gotchas
+`dist/` artifacts are non-deterministic and not committed. CI/release rebuild from source.
 
-- Zone path separator inside the algorithm/oracle is `>` (e.g. `RED>GREEN>BLUE`), and `target_firewalls` joins with `;`. (README prose sometimes shows `->` for readability — trust the oracle/tests.)
-- `dist/` artifact is **not committed** (non-deterministic timestamp); CI rebuilds from source. Don't commit built `.xlsm` files.
-- VBA **source comments** in Korean are codepage-lossy in the built `vbaProject.bin` (pyOpenVBA template uses a Western code page; `한글` comments may show as `?` in the VBE). Cosmetic only — VBA code/identifiers are ASCII and run correctly; user-visible **sheet** Korean (seeded cells) is proper UTF-8 and intact. The round-trip test compares ASCII-normalized source for this reason.
-- `route_legacy_fallback` is always `FALSE` (default and standing policy — never enable it). Unresolved routes must stay `NO_PATH`/`ZONE_UNRESOLVED`; the CIDR-overlap fallback and `LEGACY_FALLBACK` status are kept only as dormant legacy code, not used in operation.
-- Detailed schema/operations docs: `docs/excel-schema.md`, `docs/excel-native.md`. Full data-input rules and `validation_status` meanings: `README.md`.
+## CI / Release
+
+- Branch is `master`; there is no `main`.
+- CI runs on push/PR to `master`: pytest, build, request-folder scaffold, artifact smoke verification.
+- Release runs on `v*` tags: pytest, build, artifact verification, bundle zip, GitHub Release upload.
+- Commit style in history is Conventional Commits (`feat:`, `fix:`, `docs:`, `ci:`, `chore:`).
+
+## Gotchas
+
+- VBA comments may be codepage-lossy in `vbaProject.bin`; user-visible workbook Korean cells are preserved. Structure tests compare normalized module source.
+- LibreOffice macro execution is unavailable here. Tests validate Python oracle and inspect generated `.xlsm`; they do not execute VBA macros.
+- `request-folder/*.xlsx` files are generated/sample binaries and often change by one byte after scaffold/test runs. Do not include that churn unless intentionally updating samples.
+- If route logic changes, update oracle, VBA, and scenario tests in one change. Never touch only one side.
