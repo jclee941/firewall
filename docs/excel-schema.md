@@ -29,7 +29,7 @@
 | 원본파일 | 자동 | 원본 파일명 |
 | 원본행 | 자동 | 원본 행 번호 |
 | 검증상태 | 자동 | `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, `DUPLICATE` |
-| 적용대상방화벽 | 자동 | 중복 제거된 방화벽 목록. `;` 구분 |
+| 대상방화벽 | 자동 | 중복 제거된 방화벽 목록. `;` 구분. 값이 있으면 셀 배경색으로 강조 |
 | 출발지IP | 입력 | IP, CIDR, 목록 |
 | 출발지설명 | 입력 | 출발지 이름 |
 | 목적지IP | 입력 | IP, CIDR, 목록 |
@@ -90,4 +90,4 @@
 
 ## SECUI sheets
 
-`secui_batch`와 `secui_cli`는 `requests.적용대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다.
+`secui_batch`와 `secui_cli`는 `requests.대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다.

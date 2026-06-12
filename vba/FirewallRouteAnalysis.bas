@@ -54,7 +54,9 @@ Public Sub AnalyzeRequestRoutes()
 End Sub
 
 Private Sub WriteResultRow(ByVal sheet As Worksheet, ByVal rowIndex As Long, ByVal res As Object)
-    sheet.Cells(rowIndex, RCOL_TARGET).Value = res("target_firewalls")
+    Dim targetCell As Range
+    Set targetCell = sheet.Cells(rowIndex, RCOL_TARGET)
+    targetCell.Value = res("target_firewalls")
     sheet.Cells(rowIndex, RCOL_FW_PATH).Value = res("firewall_path")
     sheet.Cells(rowIndex, RCOL_SRC_ZONE).Value = res("source_zone")
     sheet.Cells(rowIndex, RCOL_DST_ZONE).Value = res("destination_zone")
@@ -67,10 +69,13 @@ Private Sub WriteResultRow(ByVal sheet As Worksheet, ByVal rowIndex As Long, ByV
     Set c = sheet.Cells(rowIndex, RCOL_VALID_STATUS)
     If res("status") = "OK" Then
         c.Interior.Color = RGB(198, 239, 206)
+        targetCell.Interior.Color = RGB(217, 234, 211)
     ElseIf res("status") = "DIRECTION_MISMATCH" Then
         c.Interior.Color = RGB(255, 235, 156)
+        targetCell.Interior.Color = RGB(255, 242, 204)
     Else
         c.Interior.Color = RGB(255, 199, 206)
+        targetCell.Interior.Color = RGB(255, 230, 230)
     End If
 End Sub
 

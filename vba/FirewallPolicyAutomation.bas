@@ -1233,7 +1233,7 @@ Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_NAME)).Merge
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_NAME)).Merge
     Application.DisplayAlerts = True
-    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "적용대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
+    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)

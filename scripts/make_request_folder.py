@@ -123,7 +123,7 @@ request-folder — 신청서를 넣는 폴더
 - 새 신청서는 _빈양식/신청서_빈양식.xlsx 를 복사해서 작성하세요.
 
 이 폴더에 들어 있는 신청 건은 워크북의 기본 firewall_ranges와 매칭되므로
-그대로 통합/분석하면 적용대상방화벽(target_firewalls)이 채워집니다.
+그대로 통합/분석하면 대상방화벽(target_firewalls)이 채워집니다.
 """
 
 

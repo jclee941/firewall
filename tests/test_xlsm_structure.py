@@ -116,6 +116,7 @@ def test_sheets_and_headers(xlsm_path):
     assert req.max_column == 25, f"requests max_column={req.max_column}"
     actual_req = [req.cell(2, c).value for c in range(1, 26)]
     assert actual_req == REQUESTS_HEADERS, f"requests header drift: {actual_req!r}"
+    assert req.cell(2, 7).value == "\ub300\uc0c1\ubc29\ud654\ubcbd"
     # row-1 cosmetic group labels: 출발지 over IP+설명, 목적지 over IP+설명, merged.
     merged = {str(rng) for rng in req.merged_cells.ranges}
     assert req.cell(1, 8).value == "\ucd9c\ubc1c\uc9c0", "row1 출발지 group label missing"
@@ -266,6 +267,13 @@ def test_secui_cli_macro_generates_fw_set_srule_commands():
     assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
 
 
+def test_route_macro_colors_target_firewall_cell():
+    src = open(VBA_ROUTE, encoding="utf-8").read()
+    assert "Set targetCell = sheet.Cells(rowIndex, RCOL_TARGET)" in src
+    assert 'targetCell.Value = res("target_firewalls")' in src
+    assert "targetCell.Interior.Color = RGB(217, 234, 211)" in src
+
+
 def test_duplicate_marking_runs_after_route_analysis():
     """MarkDuplicateRequests must run AFTER AnalyzeRequestRoutes.
 
@@ -355,6 +363,7 @@ def test_korean_preserved_in_injected_vba(xlsm_path):
 
 
 VBA_ROUTE = os.path.join(ROOT, "vba", "FirewallRouteAnalysis.bas")
+RELEASE_WORKFLOW = os.path.join(ROOT, ".github", "workflows", "release.yml")
 
 
 def test_vba_loads_firewall_ranges_sheet():
@@ -363,6 +372,14 @@ def test_vba_loads_firewall_ranges_sheet():
     assert "ThisWorkbook.Worksheets(FIREWALL_RANGE_SHEET)" in src
     assert "NETWORK_SHEET" not in src
     assert "ROUTING_SHEET" not in src
+
+
+def test_release_workflow_verifies_firewall_ranges_sheet():
+    src = open(RELEASE_WORKFLOW, encoding="utf-8").read()
+    assert '"firewall_ranges"' in src
+    assert '"network_definitions"' not in src
+    assert '"routing_paths"' not in src
+    assert "대상방화벽" in src
 
 
 def test_vba_split_address_list_collapses_spaces():
@@ -521,6 +538,14 @@ def test_ux_required_input_empty_highlight(xlsm_path):
         "requests has no conditional formatting for empty required cells"
     assert any(req.conditional_formatting[rng] for rng in req.conditional_formatting), \
         "conditional formatting present but carries no rules"
+
+
+def test_ux_target_firewall_cell_highlight(xlsm_path):
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    req = wb["requests"]
+    cf_ranges = [str(rng) for rng in req.conditional_formatting]
+    assert any("G" in rng for rng in cf_ranges), \
+        "대상방화벽(col7) must have conditional formatting"
 
 
 def test_ux_header_comments_on_key_columns(xlsm_path):

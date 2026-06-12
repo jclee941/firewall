@@ -39,7 +39,7 @@ MODULES = [
 
 REQUESTS_HEADERS = [
     "요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태",
-    "적용대상방화벽",
+    "대상방화벽",
     "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향",
     "용도", "시작일", "종료일", "비고",
     "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로",
@@ -110,7 +110,7 @@ USAGE = [
     ["3", "대역은 IP/CIDR/ANY를 쓸 수 있고 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
     ["4", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 폴더를 선택한다"],
     ["5", "requests 시트에 직접 입력하거나 MergeFirewallRequestFolder 매크로로 폴더 안 신청서를 통합한다 (Alt+F8)"],
-    ["6", "AnalyzeRequestRoutes 매크로를 실행해 적용대상방화벽 경로와 검증 상태를 계산한다"],
+    ["6", "AnalyzeRequestRoutes 매크로를 실행해 대상방화벽과 검증 상태를 계산한다"],
     ["7", "ConvertRequestsToSecuiBatch 매크로로 requests 결과를 secui_batch 장비별 배치 양식으로 변환한다"],
     ["8", "ConvertRequestsToSecuiCli 매크로로 requests 결과를 secui_cli 장비별 CLI 명령 초안으로 변환한다"],
     ["⚠", "입력 시트(녹색·황색 탭)는 보호되어 있다. 헤더는 수정 불가, 데이터 입력 영역만 타이핑 가능"],
@@ -244,6 +244,7 @@ _UX_LAST_ROW = 5000  # bound validations/CF so we never explode to 1048576 rows
 _REQ_PROTOCOL_COL = 12    # 프로토콜
 _REQ_PORT_COL = 13        # 포트
 _REQ_DIRECTION_COL = 14   # 방향
+_REQ_TARGET_COL = 7
 _REQ_SRC_IP_COL = 8       # 출발지IP (required)
 _REQ_DST_IP_COL = 10      # 목적지IP (required)
 
@@ -262,6 +263,7 @@ _TAB_COLORS = {
 }
 
 _EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")  # light red
+_TARGET_FIREWALL_FILL = PatternFill("solid", fgColor="D9EAD3")
 
 # operator-input sheets that MAY be protected. requests/processing_log are
 # written by VBA at runtime and must NEVER be protected.
@@ -325,6 +327,14 @@ def _apply_ux(wb) -> None:
             stopIfTrue=False,
         )
         req.conditional_formatting.add(rng, rule)
+    target_letter = get_column_letter(_REQ_TARGET_COL)
+    target_rng = f"{target_letter}{_REQ_DATA_START_ROW}:{target_letter}{_UX_LAST_ROW}"
+    target_rule = FormulaRule(
+        formula=[f'LEN(TRIM({target_letter}{_REQ_DATA_START_ROW}))>0'],
+        fill=_TARGET_FIREWALL_FILL,
+        stopIfTrue=False,
+    )
+    req.conditional_formatting.add(target_rng, target_rule)
 
     # 5) header hint comments on key input columns -------------------------- #
     _src_hint = (

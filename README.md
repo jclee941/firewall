@@ -1,6 +1,6 @@
 # Firewall Policy Automation
 
-DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서를 통합하고, 사용자가 정의한 방화벽 통과 대역 기준으로 적용대상방화벽을 계산하는 도구입니다.
+DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서를 통합하고, 사용자가 정의한 방화벽 통과 대역 기준으로 대상방화벽을 계산하는 도구입니다.
 
 기존 zone/routing_paths/BFS 모델은 제거했습니다. 이제 운영자는 Excel에서 두 가지만 관리합니다.
 
@@ -22,7 +22,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 2. `firewall_ranges` 시트에 통과 대역을 등록합니다.
 3. `settings.request_folder`에 신청서 폴더를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
 4. `MergeFirewallRequestFolder`로 신청서를 통합합니다.
-5. `AnalyzeRequestRoutes`로 적용대상방화벽을 다시 계산할 수 있습니다.
+5. `AnalyzeRequestRoutes`로 대상방화벽을 다시 계산할 수 있습니다.
 6. SECUI 장비는 `ConvertRequestsToSecuiBatch` 또는 `ConvertRequestsToSecuiCli`로 배치/CLI 초안을 만듭니다.
 
 ## 시트
@@ -70,7 +70,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 3. 신청서 출발지와 `source_cidr`, 신청서 목적지와 `destination_cidr`가 CIDR 겹침이면 매칭입니다.
 4. 방향은 `direction`과 신청서 `방향`이 맞아야 합니다. 빈값이나 `BOTH`는 양방향으로 봅니다.
 5. 매칭된 행을 `path_order`, 행 순서, 방화벽명 순으로 정렬합니다.
-6. `적용대상방화벽`은 정렬된 방화벽명을 중복 제거해 `;`로 연결합니다.
+6. `대상방화벽`은 정렬된 방화벽명을 중복 제거해 `;`로 연결합니다.
 7. `방화벽경로`는 매칭 행 순서를 그대로 `>`로 연결합니다.
 
 ## 상태값
@@ -86,11 +86,11 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 
 `requests` 시트는 25개 컬럼을 유지합니다. 데이터는 3행부터입니다.
 
-`요청부서`, `요청번호`, `제목`, `원본파일`, `원본행`, `검증상태`, `적용대상방화벽`, `출발지IP`, `출발지설명`, `목적지IP`, `목적지설명`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`, `검증메시지`, `방화벽경로`, `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거`, `요청폴더`
+`요청부서`, `요청번호`, `제목`, `원본파일`, `원본행`, `검증상태`, `대상방화벽`, `출발지IP`, `출발지설명`, `목적지IP`, `목적지설명`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`, `검증메시지`, `방화벽경로`, `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거`, `요청폴더`
 
 ## SECUI 출력
 
-`ConvertRequestsToSecuiBatch`와 `ConvertRequestsToSecuiCli`는 `적용대상방화벽`을 `;`로 분리해 장비별 행을 만듭니다. `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다.
+`ConvertRequestsToSecuiBatch`와 `ConvertRequestsToSecuiCli`는 `대상방화벽`을 `;`로 분리해 장비별 행을 만듭니다. `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다.
 
 CLI 명령은 검토용 초안입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
 
