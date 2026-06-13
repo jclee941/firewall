@@ -6,6 +6,7 @@ Private Const REQUESTS_SHEET As String = "requests"
 Private Const SECUI_BATCH_SHEET As String = "secui_batch"
 Private Const SECUI_CLI_SHEET As String = "secui_cli"
 Private Const VENDOR_CLI_TEMPLATE_SHEET As String = "vendor_cli_templates"
+Private Const SERVICE_CATALOG_SHEET As String = "service_catalog"
 Private Const LOG_SHEET As String = "processing_log"
 Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
 
@@ -62,6 +63,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Dim secuiBatchSheet As Worksheet
     Dim secuiCliSheet As Worksheet
     Dim vendorCliTemplateSheet As Worksheet
+    Dim serviceCatalogSheet As Worksheet
 
     Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
@@ -71,6 +73,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Set secuiBatchSheet = EnsureSheet(SECUI_BATCH_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
     Set vendorCliTemplateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
+    Set serviceCatalogSheet = EnsureSheet(SERVICE_CATALOG_SHEET)
 
     WriteRequestHeaders requestsSheet
     WriteFirewallHeaders firewallsSheet
@@ -80,6 +83,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     WriteSecuiBatchHeaders secuiBatchSheet
     WriteSecuiCliHeaders secuiCliSheet
     WriteVendorCliTemplateHeaders vendorCliTemplateSheet
+    WriteServiceCatalogHeaders serviceCatalogSheet
     FormatRequestsSheet requestsSheet
     FormatFirewallsSheet firewallsSheet
     FormatGenericSheet firewallRangeSheet, "A:G"
@@ -87,6 +91,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     FormatSecuiBatchSheet secuiBatchSheet
     FormatSecuiCliSheet secuiCliSheet
     FormatGenericSheet vendorCliTemplateSheet, "A:E"
+    FormatGenericSheet serviceCatalogSheet, "A:E"
 
     MsgBox "방화벽 정책 자동화 시트 구성이 완료되었습니다.", vbInformation
 End Sub
@@ -1244,6 +1249,20 @@ Private Sub WriteVendorCliTemplateHeaders(ByVal worksheet As Worksheet)
     End If
 End Sub
 
+Private Sub WriteServiceCatalogHeaders(ByVal worksheet As Worksheet)
+    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
+        worksheet.Range("A1:E1").Value = Array("service_name", "protocol", "port", "secui_service", "description")
+        worksheet.Range("A2:E8").Value = Array( _
+            Array("HTTPS", "TCP", "443", "tcp/443", "웹 HTTPS"), _
+            Array("HTTP", "TCP", "80", "tcp/80", "웹 HTTP"), _
+            Array("SSH", "TCP", "22", "tcp/22", "SSH 관리"), _
+            Array("DNS-UDP", "UDP", "53", "udp/53", "DNS 조회"), _
+            Array("DNS-TCP", "TCP", "53", "tcp/53", "DNS zone transfer 등"), _
+            Array("ICMP", "ICMP", "", "icmp/", "ICMP/Ping"), _
+            Array("CUSTOM", "TCP", "직접입력", "tcp/<port>", "목록에 없는 서비스는 포트 칸에 직접 입력"))
+    End If
+End Sub
+
 Private Sub AppendProcessingLog(ByVal worksheet As Worksheet, ByVal sourceFileName As String, ByVal statusText As String, ByVal mergedRows As Long, ByVal messageText As String)
     Dim nextRow As Long
 
@@ -1360,8 +1379,7 @@ Private Sub WriteSettings(ByVal worksheet As Worksheet)
         worksheet.Range("A1:C1").Value = Array("key", "value", "설명")
         worksheet.Range("A2:C2").Value = Array("request_folder", "", "신청서 엑셀이 모여 있는 폴더 경로. 하위 폴더(예: 정보보호센터_1234)까지 재귀 탐색합니다.")
         worksheet.Range("A3:C3").Value = Array("parse_sheet", "", "파싱할 시트 이름(정확히 일치). 비워두면 헤더로 자동 감지합니다.")
-        worksheet.Range("A4:C4").Value = Array("parse_targets", "출발지IP;목적지IP", "(사용 안 함/예약) 현재 동작에 영향 없음. 출발지IP와 목적지IP는 항상 필수입니다.")
-        worksheet.Range("A5:C5").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
+        worksheet.Range("A4:C4").Value = Array("header_alias", "", "비표준 헤더 별칭. 형식: 출발지IP=출발지주소,Source Addr; 목적지IP=목적지주소")
     Else
         ' Upgrade an already-seeded settings sheet: add parse_sheet if it predates
         ' this version, without disturbing existing rows/values.

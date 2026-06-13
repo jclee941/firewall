@@ -74,6 +74,8 @@ SECUI 변환 매크로는 `firewalls.vendor=SECUI`이고 사용 중인 장비만
 
 CLI 명령 형식은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`에서 수정합니다. 기본 템플릿은 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}` placeholder를 사용합니다.
 
+`service_catalog` 시트에서 SECUI 서비스 표기 예시(`tcp/443`, `udp/53`, `icmp/`)를 확인할 수 있습니다. 이 시트는 입력 편의용 참고표이며 `requests`의 포트 입력을 제한하지 않습니다.
+
 ## 개발 검증
 
 ```bash

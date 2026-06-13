@@ -77,8 +77,8 @@ def test_sheets_and_headers(xlsm_path):
 
     expected_sheets = {
         "requests", "firewalls", "firewall_ranges",
-        "settings", "processing_log", "sample-request-format", "usage",
-        "secui_batch", "secui_cli", "vendor_cli_templates",
+        "settings", "header_aliases", "processing_log", "sample-request-format", "usage",
+        "secui_batch", "secui_cli", "vendor_cli_templates", "service_catalog",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -89,6 +89,7 @@ def test_sheets_and_headers(xlsm_path):
         "firewall_ranges": ["firewall_name", "source_cidr", "destination_cidr",
                             "direction", "path_order", "enabled", "comment"],
         "settings": ["key", "value", "\uc124\uba85"],
+        "header_aliases": ["standard", "your_column", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
         "secui_batch": [
             "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c",
@@ -102,9 +103,8 @@ def test_sheets_and_headers(xlsm_path):
             "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
             "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
         ],
-        "vendor_cli_templates": [
-            "vendor", "template_name", "enabled", "command_template", "review_note",
-        ],
+        "vendor_cli_templates": ["vendor", "template_name", "enabled", "command_template", "review_note"],
+        "service_catalog": ["service_name", "protocol", "port", "secui_service", "description"],
         "usage": ["Step", "Action"],
     }
     for sheet, headers in expected_headers.items():
@@ -222,8 +222,9 @@ def test_settings_schema_matches_vba_and_build(xlsm_path):
     s = wb["settings"]
     assert [s.cell(1, c).value for c in range(1, 4)] == ["key", "value", "\uc124\uba85"]
     keys = [s.cell(r, 1).value for r in range(2, s.max_row + 1)]
-    for required in ("request_folder", "parse_sheet", "parse_targets", "header_alias"):
+    for required in ("request_folder", "parse_sheet", "header_alias"):
         assert required in keys, f"settings missing key {required}"
+    assert "parse_targets" not in keys, "unused parse_targets setting should not be seeded"
     # every seeded settings row must carry a non-empty 설명 (column 3)
     for r in range(2, s.max_row + 1):
         if s.cell(r, 1).value:

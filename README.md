@@ -38,6 +38,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 | `secui_batch` | SECUI 배치 입력용 행 |
 | `secui_cli` | SECUI CLI 명령 초안 |
 | `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
+| `service_catalog` | SECUI 서비스 표기 예시(`tcp/443`, `udp/53` 등) |
 | `sample-request-format` | 신청서 양식 예시 |
 | `usage` | 워크북 안 사용 순서 |
 
@@ -92,6 +93,8 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 ## SECUI 출력
 
 `ConvertRequestsToSecuiBatch`와 `ConvertRequestsToSecuiCli`는 `대상방화벽`을 `;`로 분리해 장비별 행을 만듭니다. `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다.
+
+`service_catalog` 시트는 자주 쓰는 SECUI 서비스 표기 예시를 제공합니다. `프로토콜`은 기존 드롭다운을 유지하고, `포트` 입력은 제한하지 않으므로 목록에 없는 포트도 기존처럼 직접 입력할 수 있습니다.
 
 CLI 명령은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`을 신청서 데이터로 치환해 만듭니다. 기본 placeholder는 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}`이며, `_q`가 붙은 값은 CLI용 따옴표로 감싼 값입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
 

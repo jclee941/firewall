@@ -43,6 +43,7 @@ SECUI-specific public management repositories are scarce. Current public GitHub 
 | `settings` | 폴더/파싱 설정 | 사용자 |
 | `header_aliases` | 신청서 헤더 별칭 | 사용자 |
 | `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 | 사용자 |
+| `service_catalog` | SECUI 서비스 표기 예시 | 사용자/배포 산출물 |
 | `secui_batch` | 장비별 배치 양식 | 매크로 |
 | `secui_cli` | 장비별 CLI 명령 초안 | 매크로 |
 | `processing_log` | 처리 로그 | 매크로 |

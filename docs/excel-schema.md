@@ -15,6 +15,7 @@
 | `secui_batch` | SECUI 배치 양식 |
 | `secui_cli` | SECUI CLI 초안 |
 | `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
+| `service_catalog` | SECUI 서비스 표기 예시 |
 | `sample-request-format` | 신청서 예시 |
 | `usage` | 사용 순서 |
 
@@ -86,7 +87,6 @@
 | --- | --- |
 | `request_folder` | 신청서 폴더 |
 | `parse_sheet` | 파싱할 시트명. 빈값이면 자동 감지 |
-| `parse_targets` | 예약 필드. 현재 동작에는 영향 없음 |
 | `header_alias` | 비표준 헤더 별칭 |
 
 ## SECUI sheets
@@ -94,3 +94,5 @@
 `secui_batch`와 `secui_cli`는 `requests.대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다.
 
 `vendor_cli_templates`는 CLI 명령어를 엑셀 데이터로 관리합니다. `vendor=SECUI`, `enabled=Y`인 첫 번째 행의 `command_template`을 사용하며, `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}` 같은 placeholder를 신청서 값으로 치환합니다. `_q`가 붙은 placeholder는 CLI용 따옴표로 감싼 값입니다.
+
+`service_catalog`는 SECUI CLI와 배치 출력에서 쓰는 서비스 표기 예시를 제공합니다. `secui_service`는 `프로토콜/포트` 조합을 보여 주는 참고값이며, 라우트 계산에는 사용하지 않습니다. 목록에 없는 포트는 `requests.포트`에 직접 입력합니다.

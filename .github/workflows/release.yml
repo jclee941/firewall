@@ -57,7 +57,9 @@ jobs:
           g.close()
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
-                  "settings", "processing_log", "sample-request-format", "usage"}
+                  "settings", "header_aliases", "processing_log",
+                  "secui_batch", "secui_cli", "vendor_cli_templates",
+                  "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
           assert wb["requests"].max_column == 25, wb["requests"].max_column
           print("artifact OK:", p)
@@ -104,7 +106,8 @@ jobs:
           ## 사용 순서
           1. `firewalls` : 방화벽 장비 목록
           2. `firewall_ranges` : 출발지대역, 목적지대역, 방향, 순서
-          3. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
+          3. `service_catalog` : SECUI 서비스 표기 예시(tcp/443 등) 확인
+          4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
           5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8). `request-folder/`(번들 zip)를 그대로 쓰거나 복사해서 사용하세요.
           6. 방화벽 대역만 재분석: `AnalyzeRequestRoutes`
 
