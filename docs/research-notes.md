@@ -21,9 +21,9 @@ Useful references:
 
 Practical path for this repo:
 
-1. Keep `firewall-policy-automation.xlsx` as the clone-ready configured workbook.
-2. Keep `vba/FirewallPolicyAutomation.bas` as the source macro module.
-3. If a real starter `.xlsm` is required, create it once on Windows Excel, then commit that `.xlsm` or extract its `vbaProject.bin` and use XlsxWriter to reproduce it.
+1. Keep workbook structure, seed data, and UX formatting in `scripts/`.
+2. Keep VBA modules in `vba/` as the macro source of truth.
+3. Rebuild the operator `.xlsm` from source with `scripts/build_xlsm.py`; do not commit stale root workbook binaries.
 
 ## Target firewall calculation
 

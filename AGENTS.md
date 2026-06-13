@@ -81,6 +81,5 @@ Statuses are `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, plus duplicate markers from
 
 - VBA comments may be codepage-lossy in `vbaProject.bin`; user-visible workbook Korean cells are preserved. Structure tests compare normalized module source.
 - LibreOffice macro execution is unavailable here. Tests validate Python oracle and inspect generated `.xlsm`; they do not execute VBA macros.
-- `request-folder/*.xlsx` files are generated/sample binaries and often change by one byte after scaffold/test runs. Do not include that churn unless intentionally updating samples.
-- `firewall-policy-automation.xlsx` and `request-folder/**/*.xlsx` are tracked operator/sample binaries; treat changes as artifact updates, not source edits.
+- `request-folder/**/*.xlsx` files are generated/sample binaries and often change by one byte after scaffold/test runs. Do not include that churn unless intentionally updating samples.
 - If route logic changes, update oracle, VBA, and scenario tests in one change. Never touch only one side.
