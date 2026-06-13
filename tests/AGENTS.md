@@ -11,6 +11,7 @@ Tests are the binding specification for the workbook and VBA behavior. They do n
 | Range matching behavior | `route_oracle.py`, `test_route_oracle.py` | Must mirror `vba/FirewallRouteAnalysis.bas` |
 | Request parsing behavior | `request_parser_oracle.py`, `test_request_parsing.py`, `test_merged_cells.py` | Mirrors parser logic in `vba/FirewallPolicyAutomation.bas` |
 | Generated `.xlsm` invariants | `test_xlsm_structure.py` | Builds the workbook and inspects sheets, VBA modules, UX formatting |
+| Workbook usage navigation | `test_workbook_usage_links.py` | Verifies `usage` opens first and links to key workbook sheets |
 | Folder/sample parsing | `test_request_folder.py`, `test_folder_parse.py` | Uses `scripts/make_request_folder.py` output |
 | Header alias behavior | `user_alias_oracle.py`, `test_user_alias.py` | Keep built-in aliases and settings/header_alias behavior aligned |
 
@@ -31,6 +32,7 @@ Tests are the binding specification for the workbook and VBA behavior. They do n
 - Generated workbook must contain `firewall_ranges`; it must not require `network_definitions` or `routing_paths`.
 - Injected VBA modules must match `vba/*.bas`; `Module1` must be absent.
 - Release workflow sheet checks must track the same workbook contract as `test_sheets_and_headers`.
+- `usage` quick links are UX-only and must not change route/SECUI behavior.
 
 ## Gotchas
 

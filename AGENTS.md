@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-Generated: 2026-06-12
-Commit: cf0c728
+Generated: 2026-06-13
+Commit: 8860d14
 Branch: master
 
 ## Overview
@@ -25,7 +25,8 @@ Excel-native VBA tool for merging firewall-policy request spreadsheets and compu
 | Task | Location | Notes |
 | --- | --- | --- |
 | Change route/range calculation | `tests/route_oracle.py`, `vba/FirewallRouteAnalysis.bas`, `tests/test_route_oracle.py` | Python oracle and VBA must stay behavior-identical |
-| Change workbook sheets/headers/seeds | `scripts/build_xlsm.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py` | Build seed, VBA setup seed, and structure tests must stay in sync |
+| Change workbook sheets/headers/seeds | `scripts/workbook_contract.py`, `scripts/build_xlsm.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py` | Build seed, VBA setup seed, and structure tests must stay in sync |
+| Change workbook UX/navigation | `scripts/workbook_ux.py`, `tests/test_xlsm_structure.py`, `tests/test_workbook_usage_links.py` | Display/input-assist only; never alter route/parser values |
 | Change request parser behavior | `tests/request_parser_oracle.py`, `vba/FirewallPolicyAutomation.bas`, parser tests | Header aliases and merged-cell behavior are mirrored |
 | Change SECUI output | `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py`, docs | Batch and CLI split `대상방화벽` by `;` |
 | Change build/release artifact shape | `scripts/build_xlsm.py`, `scripts/make_request_folder.py`, `.github/workflows/`, `tests/test_xlsm_structure.py` | CI/release are artifact-driven, not package-driven |
@@ -65,7 +66,7 @@ Statuses are `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, plus duplicate markers from
 
 ## Build Pipeline
 
-`scripts/build_xlsm.py` injects `vba/FirewallPolicyAutomation.bas` and `vba/FirewallRouteAnalysis.bas`, removes default `Module1`, seeds workbook sheets, applies UX formatting, and preserves VBA. `tests/test_xlsm_structure.py` verifies module presence, sheet headers, Korean codepage handling, target-cell highlight, release workflow sheet expectations, and source-to-injected module parity.
+`scripts/build_xlsm.py` injects `vba/FirewallPolicyAutomation.bas` and `vba/FirewallRouteAnalysis.bas`, removes default `Module1`, seeds workbook sheets, applies UX formatting from `scripts/workbook_ux.py`, and preserves VBA. `tests/test_xlsm_structure.py` verifies module presence, sheet headers, Korean codepage handling, target-cell highlight, release workflow sheet expectations, and source-to-injected module parity. `tests/test_workbook_usage_links.py` verifies first-open usage-sheet quick links.
 
 `dist/*.xlsm` artifacts are non-deterministic and not committed. `dist/README.txt` is tracked release-bundle text. CI/release rebuild binary artifacts from source.
 

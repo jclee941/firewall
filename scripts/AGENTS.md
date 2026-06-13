@@ -9,10 +9,10 @@ Linux-only builders for the shipped Excel workbook and sample request-folder tre
 | Task | Location | Notes |
 | --- | --- | --- |
 | Build `.xlsm` workbook | `build_xlsm.py` | Injects `vba/*.bas`, seeds sheets, formats UX, preserves macros |
-| Change workbook headers/sheets | `build_xlsm.py`, `../vba/FirewallPolicyAutomation.bas`, `../tests/test_xlsm_structure.py` | Python constants and VBA `Write*` routines must agree |
+| Change workbook headers/sheets | `workbook_contract.py`, `build_xlsm.py`, `../vba/FirewallPolicyAutomation.bas`, `../tests/test_xlsm_structure.py` | Python constants and VBA `Write*` routines must agree |
 | Change route seed examples | `build_xlsm.py`, `../tests/test_xlsm_structure.py`, `../tests/route_oracle.py` | Seeded `requests` rows must resolve through the oracle |
 | Change request-folder samples | `make_request_folder.py`, `../tests/test_request_folder.py`, `../tests/test_folder_parse.py` | Folder names encode team/doc number |
-| Change UX/protection behavior | `build_xlsm.py`, `../tests/test_xlsm_structure.py` | Display/input-assist only; must not alter route semantics |
+| Change UX/protection behavior | `workbook_ux.py`, `build_xlsm.py`, `../tests/test_xlsm_structure.py`, `../tests/test_workbook_usage_links.py` | Display/input-assist only; must not alter route semantics |
 | Change SECUI service examples | `workbook_contract.py`, `build_xlsm.py`, `../vba/FirewallPolicyAutomation.bas`, `../tests/test_secui_service_catalog.py` | Reference data only; do not change route logic |
 
 ## Commands
@@ -33,6 +33,7 @@ Use the repo venv. There is no `pyproject.toml`; dependencies are pinned in `req
 - `requests` row 1 is a cosmetic group band, row 2 is canonical headers, row 3 starts data.
 - `service_catalog` is a SECUI operator reference sheet; it is not an algorithm input.
 - `_UX_LAST_ROW` bounds validation and conditional formatting; never expand UX ranges to whole columns.
+- `usage` is the first-open navigation sheet and carries internal links to key input/output/reference sheets.
 
 ## Anti-Patterns
 
