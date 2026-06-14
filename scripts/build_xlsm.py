@@ -34,10 +34,15 @@ from scripts.workbook_contract import (
     FREEZE_PANES,
     HEADER_ALIASES,
     PROCESSING_LOG,
+    POLICY_ANALYSIS_HEADERS,
+    POLICY_ANALYSIS_ROWS,
+    POLICY_SUMMARY_HEADERS,
+    POLICY_SUMMARY_ROWS,
     REQUESTS_HEADERS,
     SAMPLE_FORMAT,
     SECUI_BATCH_HEADERS,
     SECUI_CLI_HEADERS,
+    SECUI_POLICY_EXPORT,
     SERVICE_CATALOG,
     SETTINGS,
     USAGE,
@@ -227,6 +232,9 @@ def main() -> int:
     add("processing_log", PROCESSING_LOG)
     add("secui_batch", [SECUI_BATCH_HEADERS])
     add("secui_cli", [SECUI_CLI_HEADERS])
+    add("secui_policy_export", SECUI_POLICY_EXPORT)
+    add("policy_analysis", [POLICY_ANALYSIS_HEADERS, *POLICY_ANALYSIS_ROWS])
+    add("policy_summary", [POLICY_SUMMARY_HEADERS, *POLICY_SUMMARY_ROWS])
     add("vendor_cli_templates", VENDOR_CLI_TEMPLATES)
     add("service_catalog", SERVICE_CATALOG)
     # sample-request-format has a blank A column header

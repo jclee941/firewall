@@ -2,43 +2,54 @@
 
 DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서를 통합하고, 사용자가 정의한 방화벽 통과 대역 기준으로 대상방화벽을 계산하는 도구입니다.
 
-기존 zone/routing_paths/BFS 모델은 제거했습니다. 이제 운영자는 Excel에서 두 가지만 관리합니다.
+운영자는 Excel에서 두 가지 입력 시트만 직접 관리하면 됩니다.
 
 - `firewalls`: 방화벽 장비 정의
 - `firewall_ranges`: 어떤 출발지 대역에서 어떤 목적지 대역으로 갈 때 어떤 방화벽을 타는지
 
-## 빠른 시작
+기존 zone/routing_paths/BFS 모델은 제거했습니다. 대상방화벽 계산은 `firewall_ranges`가 유일한 기준입니다.
 
-```bash
-./.venv/bin/python -m pytest tests/ -q
-./.venv/bin/python scripts/build_xlsm.py
-```
+## 3분 사용 흐름
 
-산출물은 `dist/firewall-policy-automation.xlsm`입니다.
+1. `dist/firewall-policy-automation.xlsm`을 열고 매크로를 사용하도록 허용합니다.
+2. `firewalls` 시트에 장비명, 벤더, 사용여부를 등록합니다.
+3. `firewall_ranges` 시트에 출발지 대역, 목적지 대역, 방향, 표시 순서를 등록합니다.
+4. `settings` 시트의 `request_folder` 값에 신청서 폴더 경로를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
+5. 통합 문서를 다시 열면 `Workbook_Open`이 `MergeFirewallRequestFolder`를 자동 실행합니다. 수동 실행이 필요하면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`를 실행합니다.
+6. 이미 통합된 `requests` 행만 다시 계산하려면 `AnalyzeRequestRoutes`를 실행합니다.
+7. SECUI 장비용 결과가 필요하면 `ConvertRequestsToSecuiBatch` 또는 `ConvertRequestsToSecuiCli`를 실행합니다.
+8. 기존 정책과 비교하려면 SECUI export를 `secui_policy_export` 시트에 붙여넣고 `AnalyzeSecuiPolicyExport`를 실행합니다.
+9. `policy_summary`에서 기존 허용·차단·검토필요 건수를 먼저 보고 `policy_analysis` 상세를 필터링합니다.
 
-## 운영 흐름
+## 시트 한눈에 보기
 
-1. `firewalls` 시트에 장비명, 벤더, 사용여부를 등록합니다.
-2. `firewall_ranges` 시트에 통과 대역을 등록합니다.
-3. `settings.request_folder`에 신청서 폴더를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
-4. `MergeFirewallRequestFolder`로 신청서를 통합합니다.
-5. `AnalyzeRequestRoutes`로 대상방화벽을 다시 계산할 수 있습니다.
-6. SECUI 장비는 `ConvertRequestsToSecuiBatch` 또는 `ConvertRequestsToSecuiCli`로 배치/CLI 초안을 만듭니다.
-
-## 시트
+### 입력 시트
 
 | 시트 | 역할 |
 | --- | --- |
-| `requests` | 통합 신청서와 분석 결과 |
 | `firewalls` | 방화벽 장비 메타데이터 |
 | `firewall_ranges` | 방화벽별 출발지/목적지 통과 대역 정의 |
 | `settings` | 신청서 폴더, 파싱 대상 시트, 헤더 별칭 |
 | `header_aliases` | 표준이 아닌 신청서 헤더 매핑 |
-| `processing_log` | 통합 처리 로그 |
-| `secui_batch` | SECUI 배치 입력용 행 |
-| `secui_cli` | SECUI CLI 명령 초안 |
+| `secui_policy_export` | SECUI 기존 정책 export 붙여넣기 |
 | `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
 | `service_catalog` | SECUI 서비스 표기 예시(`tcp/443`, `udp/53` 등) |
+
+### 결과 시트
+
+| 시트 | 역할 |
+| --- | --- |
+| `requests` | 통합 신청서와 분석 결과 |
+| `processing_log` | 통합 처리 로그 |
+| `policy_analysis` | 신청서와 SECUI 기존 정책 비교 결과 |
+| `policy_summary` | 기존 정책 분석 건수와 다음 조치 요약 |
+| `secui_batch` | SECUI 배치 입력용 행 |
+| `secui_cli` | SECUI CLI 명령 초안 |
+
+### 참고 시트
+
+| 시트 | 역할 |
+| --- | --- |
 | `sample-request-format` | 신청서 양식 예시 |
 | `usage` | 워크북 안 사용 순서 |
 
@@ -98,7 +109,24 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 
 CLI 명령은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`을 신청서 데이터로 치환해 만듭니다. 기본 placeholder는 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}`이며, `_q`가 붙은 값은 CLI용 따옴표로 감싼 값입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
 
+## 기존 SECUI 정책 분석
+
+`secui_policy_export` 시트는 폐쇄망에서 내보낸 기존 SECUI 정책을 붙여넣는 기초데이터 시트입니다. 실제 export 파일은 저장소에 포함하지 않습니다.
+
+필수 입력 컬럼은 `policy_id`, `policy_name`, `firewall_name`, `source`, `destination`, `service`, `action`, `enabled`, `comment`입니다. `action`은 `allow`, `accept`, `permit`, `pass`를 허용 계열로, `deny`, `drop`, `reject`를 차단 계열로 봅니다.
+
+`AnalyzeSecuiPolicyExport` 매크로는 `requests`의 신청 행과 `secui_policy_export`의 기존 정책을 비교해 `policy_analysis`를 다시 만듭니다. 최종 시트에는 업무 판단에 필요한 `판정`, `요청번호`, `대상방화벽`, `출발지`, `목적지`, `서비스`, `기존정책`, `기존정책상태`, `근거`, `조치`만 보입니다. `원본행`, raw 값, 정규화 보조값, debug note는 K:T 숨김 컬럼으로 남겨 두어 화면은 복잡하지 않게 유지합니다.
+
+`policy_summary`는 `policy_analysis`의 상태별 건수를 자동 집계합니다. 먼저 `기존 차단`, `검토 필요`, `기존 정책 없음` 건수를 확인한 뒤 상세 시트에서 해당 판정만 필터링하면 검토 순서를 빠르게 잡을 수 있습니다.
+
 ## 개발
+
+```bash
+./.venv/bin/python -m pytest tests/ -q
+./.venv/bin/python scripts/build_xlsm.py
+```
+
+산출물은 `dist/firewall-policy-automation.xlsm`입니다.
 
 - 알고리즘 계약: `tests/route_oracle.py`
 - VBA 구현: `vba/FirewallRouteAnalysis.bas`

@@ -5,6 +5,9 @@ Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const REQUESTS_SHEET As String = "requests"
 Private Const SECUI_BATCH_SHEET As String = "secui_batch"
 Private Const SECUI_CLI_SHEET As String = "secui_cli"
+Private Const SECUI_POLICY_EXPORT_SHEET As String = "secui_policy_export"
+Private Const POLICY_ANALYSIS_SHEET As String = "policy_analysis"
+Private Const POLICY_SUMMARY_SHEET As String = "policy_summary"
 Private Const VENDOR_CLI_TEMPLATE_SHEET As String = "vendor_cli_templates"
 Private Const SERVICE_CATALOG_SHEET As String = "service_catalog"
 Private Const LOG_SHEET As String = "processing_log"
@@ -43,6 +46,9 @@ Private Const COL_MATCH_DETAILS As Long = 24
 Private Const COL_REQUEST_FOLDER As Long = 25
 Private Const SECUI_LAST_COL As Long = 20
 Private Const SECUI_CLI_LAST_COL As Long = 9
+Private Const SECUI_EXPORT_LAST_COL As Long = 9
+Private Const POLICY_ANALYSIS_LAST_COL As Long = 20
+Private Const POLICY_SUMMARY_LAST_COL As Long = 4
 Private Const FW_COL_NAME As Long = 1
 Private Const FW_COL_VENDOR As Long = 2
 Private Const FW_COL_ENABLED As Long = 3
@@ -62,6 +68,9 @@ Public Sub SetupFirewallAutomationWorkbook()
     Dim logSheet As Worksheet
     Dim secuiBatchSheet As Worksheet
     Dim secuiCliSheet As Worksheet
+    Dim secuiPolicyExportSheet As Worksheet
+    Dim policyAnalysisSheet As Worksheet
+    Dim policySummarySheet As Worksheet
     Dim vendorCliTemplateSheet As Worksheet
     Dim serviceCatalogSheet As Worksheet
 
@@ -72,6 +81,9 @@ Public Sub SetupFirewallAutomationWorkbook()
     Set logSheet = EnsureSheet(LOG_SHEET)
     Set secuiBatchSheet = EnsureSheet(SECUI_BATCH_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
+    Set secuiPolicyExportSheet = EnsureSheet(SECUI_POLICY_EXPORT_SHEET)
+    Set policyAnalysisSheet = EnsureSheet(POLICY_ANALYSIS_SHEET)
+    Set policySummarySheet = EnsureSheet(POLICY_SUMMARY_SHEET)
     Set vendorCliTemplateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
     Set serviceCatalogSheet = EnsureSheet(SERVICE_CATALOG_SHEET)
 
@@ -82,6 +94,9 @@ Public Sub SetupFirewallAutomationWorkbook()
     WriteLogHeaders logSheet
     WriteSecuiBatchHeaders secuiBatchSheet
     WriteSecuiCliHeaders secuiCliSheet
+    WriteSecuiPolicyExportHeaders secuiPolicyExportSheet
+    WritePolicyAnalysisHeaders policyAnalysisSheet
+    WritePolicySummarySheet policySummarySheet
     WriteVendorCliTemplateHeaders vendorCliTemplateSheet
     WriteServiceCatalogHeaders serviceCatalogSheet
     FormatRequestsSheet requestsSheet
@@ -90,10 +105,255 @@ Public Sub SetupFirewallAutomationWorkbook()
     FormatLogSheet logSheet
     FormatSecuiBatchSheet secuiBatchSheet
     FormatSecuiCliSheet secuiCliSheet
+    FormatGenericSheet secuiPolicyExportSheet, "A:I"
+    FormatPolicyAnalysisSheet policyAnalysisSheet
+    FormatPolicySummarySheet policySummarySheet
     FormatGenericSheet vendorCliTemplateSheet, "A:E"
     FormatGenericSheet serviceCatalogSheet, "A:E"
 
     MsgBox "방화벽 정책 자동화 시트 구성이 완료되었습니다.", vbInformation
+End Sub
+
+Public Sub AnalyzeSecuiPolicyExport()
+    Dim requestsSheet As Worksheet
+    Dim exportSheet As Worksheet
+    Dim analysisSheet As Worksheet
+    Dim summarySheet As Worksheet
+    Dim lastRow As Long
+    Dim requestRow As Long
+    Dim outputRow As Long
+
+    Set requestsSheet = EnsureSheet(REQUESTS_SHEET)
+    Set exportSheet = EnsureSheet(SECUI_POLICY_EXPORT_SHEET)
+    Set analysisSheet = EnsureSheet(POLICY_ANALYSIS_SHEET)
+    Set summarySheet = EnsureSheet(POLICY_SUMMARY_SHEET)
+    WriteSecuiPolicyExportHeaders exportSheet
+    WritePolicyAnalysisHeaders analysisSheet
+    WritePolicySummarySheet summarySheet
+    FormatPolicyAnalysisSheet analysisSheet
+    FormatPolicySummarySheet summarySheet
+
+    analysisSheet.Rows("2:" & analysisSheet.Rows.Count).ClearContents
+    analysisSheet.Rows("2:" & analysisSheet.Rows.Count).Interior.Pattern = xlNone
+    outputRow = 2
+
+    lastRow = requestsSheet.Cells(requestsSheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
+    For requestRow = REQ_DATA_START_ROW To lastRow
+        If Len(Trim$(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value))) > 0 Then
+            WritePolicyAnalysisRow requestsSheet, exportSheet, analysisSheet, requestRow, outputRow
+            outputRow = outputRow + 1
+        End If
+    Next requestRow
+
+    FormatPolicyAnalysisSheet analysisSheet
+    WritePolicySummarySheet summarySheet
+    FormatPolicySummarySheet summarySheet
+    MsgBox CStr(outputRow - 2) & "건의 SECUI 기존 정책 분석 결과를 만들었습니다.", vbInformation
+End Sub
+
+Private Sub WritePolicyAnalysisRow(ByVal requestsSheet As Worksheet, ByVal exportSheet As Worksheet, ByVal analysisSheet As Worksheet, ByVal requestRow As Long, ByVal outputRow As Long)
+    Dim result As Object
+    Dim serviceText As String
+    Set result = AnalyzeExistingPolicyForRequest(requestsSheet, exportSheet, requestRow)
+    serviceText = RequestServiceText(requestsSheet, requestRow)
+
+    analysisSheet.Cells(outputRow, 1).Value = result("status")
+    analysisSheet.Cells(outputRow, 2).Value = requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value
+    analysisSheet.Cells(outputRow, 3).Value = requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value
+    analysisSheet.Cells(outputRow, 4).Value = requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value
+    analysisSheet.Cells(outputRow, 5).Value = requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value
+    analysisSheet.Cells(outputRow, 6).Value = serviceText
+    analysisSheet.Cells(outputRow, 7).Value = result("policy_name")
+    analysisSheet.Cells(outputRow, 8).Value = result("policy_state")
+    analysisSheet.Cells(outputRow, 9).Value = result("reason")
+    analysisSheet.Cells(outputRow, 10).Value = result("action_note")
+    analysisSheet.Cells(outputRow, 11).Value = requestRow
+    analysisSheet.Cells(outputRow, 12).Value = result("policy_row")
+    analysisSheet.Cells(outputRow, 13).Value = result("raw_source")
+    analysisSheet.Cells(outputRow, 14).Value = result("raw_destination")
+    analysisSheet.Cells(outputRow, 15).Value = result("raw_service")
+    analysisSheet.Cells(outputRow, 16).Value = NormalizePolicyAddress(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value))
+    analysisSheet.Cells(outputRow, 17).Value = NormalizePolicyAddress(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value))
+    analysisSheet.Cells(outputRow, 18).Value = UCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value)))
+    analysisSheet.Cells(outputRow, 19).Value = Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value))
+    analysisSheet.Cells(outputRow, 20).Value = result("debug_note")
+
+    ColorPolicyAnalysisRow analysisSheet, outputRow, CStr(result("status"))
+End Sub
+
+Private Function AnalyzeExistingPolicyForRequest(ByVal requestsSheet As Worksheet, ByVal exportSheet As Worksheet, ByVal requestRow As Long) As Object
+    Dim best As Object
+    Dim lastRow As Long
+    Dim rowIndex As Long
+    Dim reqSource As String
+    Dim reqDestination As String
+    Dim reqProtocol As String
+    Dim reqPort As String
+    Dim reqFirewalls As String
+    Dim sawUnresolved As Boolean
+
+    Set best = NewPolicyAnalysisResult("NO_EXISTING_POLICY", "", "", "없음", "일치하는 기존 SECUI export 정책 없음", "신규 정책 생성 검토", "", "", "", "", "", "")
+    reqSource = NormalizePolicyAddress(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value))
+    reqDestination = NormalizePolicyAddress(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value))
+    reqProtocol = UCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value)))
+    reqPort = Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value))
+    reqFirewalls = Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value))
+
+    lastRow = exportSheet.Cells(exportSheet.Rows.Count, 1).End(xlUp).Row
+    For rowIndex = 2 To lastRow
+        Dim policyName As String
+        Dim policyFirewall As String
+        Dim policySource As String
+        Dim policyDestination As String
+        Dim policyService As String
+        Dim policyAction As String
+        Dim policyEnabled As Boolean
+        Dim addressMatch As Boolean
+        Dim serviceMatch As Boolean
+        Dim firewallMatch As Boolean
+
+        policyName = Trim$(CStr(exportSheet.Cells(rowIndex, 2).Value))
+        policyFirewall = Trim$(CStr(exportSheet.Cells(rowIndex, 3).Value))
+        policySource = CStr(exportSheet.Cells(rowIndex, 4).Value)
+        policyDestination = CStr(exportSheet.Cells(rowIndex, 5).Value)
+        policyService = CStr(exportSheet.Cells(rowIndex, 6).Value)
+        policyAction = NormalizePolicyAction(CStr(exportSheet.Cells(rowIndex, 7).Value))
+        policyEnabled = FirewallRowEnabled(exportSheet.Cells(rowIndex, 8).Value)
+        firewallMatch = PolicyFirewallMatches(reqFirewalls, policyFirewall)
+        addressMatch = PolicyValueMatches(reqSource, NormalizePolicyAddress(policySource)) And _
+            PolicyValueMatches(reqDestination, NormalizePolicyAddress(policyDestination))
+        serviceMatch = PolicyServiceMatches(reqProtocol, reqPort, policyService)
+
+        If HasUnresolvedPolicyObject(policySource) Or HasUnresolvedPolicyObject(policyDestination) Or HasUnresolvedPolicyObject(policyService) Then
+            sawUnresolved = True
+        End If
+
+        If firewallMatch And addressMatch And serviceMatch Then
+            If policyEnabled Then
+                If policyAction = "DENY" Then
+                    Set AnalyzeExistingPolicyForRequest = NewPolicyAnalysisResult("EXISTING_DENY", policyName, CStr(rowIndex), "사용", "차단 정책이 같은 트래픽과 일치", "방화벽 담당자 검토 필요", policySource, policyDestination, policyService, reqSource, reqDestination, "deny match")
+                    Exit Function
+                ElseIf policyAction = "ALLOW" Then
+                    Set AnalyzeExistingPolicyForRequest = NewPolicyAnalysisResult("EXISTING_ALLOW", policyName, CStr(rowIndex), "사용", "출발지/목적지/서비스/허용 정책 일치", "기존 정책 확인 후 신청 처리 생략 검토", policySource, policyDestination, policyService, reqSource, reqDestination, "allow match")
+                    Exit Function
+                End If
+            Else
+                Set best = NewPolicyAnalysisResult("DISABLED_MATCH", policyName, CStr(rowIndex), "비활성", "비활성 정책이 같은 트래픽과 일치", "정책 활성 여부 검토", policySource, policyDestination, policyService, reqSource, reqDestination, "disabled match")
+            End If
+        ElseIf firewallMatch And addressMatch And Len(CStr(best("policy_name"))) = 0 Then
+            Set best = NewPolicyAnalysisResult("PARTIAL_MATCH", policyName, CStr(rowIndex), IIf(policyEnabled, "사용", "비활성"), "출발지/목적지는 같으나 서비스 또는 동작이 다름", "기존 정책 수정/신규 정책 여부 검토", policySource, policyDestination, policyService, reqSource, reqDestination, "partial address match")
+        End If
+    Next rowIndex
+
+    If CStr(best("status")) = "NO_EXISTING_POLICY" And sawUnresolved Then
+        Set best = NewPolicyAnalysisResult("OBJECT_UNRESOLVED", "", "", "검토필요", "SECUI export에 객체명/서비스명이 있어 CIDR 또는 포트로 확정할 수 없음", "객체 원본을 확인해 분석값 보정", "", "", "", reqSource, reqDestination, "unresolved object")
+    End If
+    Set AnalyzeExistingPolicyForRequest = best
+End Function
+
+Private Function NewPolicyAnalysisResult(ByVal statusText As String, ByVal policyName As String, ByVal policyRow As String, ByVal policyState As String, ByVal reasonText As String, ByVal actionNote As String, ByVal rawSource As String, ByVal rawDestination As String, ByVal rawService As String, ByVal normalizedSource As String, ByVal normalizedDestination As String, ByVal debugNote As String) As Object
+    Set NewPolicyAnalysisResult = CreateObject("Scripting.Dictionary")
+    NewPolicyAnalysisResult("status") = statusText
+    NewPolicyAnalysisResult("policy_name") = policyName
+    NewPolicyAnalysisResult("policy_row") = policyRow
+    NewPolicyAnalysisResult("policy_state") = policyState
+    NewPolicyAnalysisResult("reason") = reasonText
+    NewPolicyAnalysisResult("action_note") = actionNote
+    NewPolicyAnalysisResult("raw_source") = rawSource
+    NewPolicyAnalysisResult("raw_destination") = rawDestination
+    NewPolicyAnalysisResult("raw_service") = rawService
+    NewPolicyAnalysisResult("normalized_source") = normalizedSource
+    NewPolicyAnalysisResult("normalized_destination") = normalizedDestination
+    NewPolicyAnalysisResult("debug_note") = debugNote
+End Function
+
+Private Function RequestServiceText(ByVal requestsSheet As Worksheet, ByVal requestRow As Long) As String
+    Dim proto As String
+    Dim portText As String
+    proto = UCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value)))
+    portText = Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value))
+    If Len(proto) = 0 And Len(portText) = 0 Then
+        RequestServiceText = ""
+    ElseIf Len(portText) = 0 Then
+        RequestServiceText = proto
+    Else
+        RequestServiceText = proto & "/" & portText
+    End If
+End Function
+
+Private Function NormalizePolicyAction(ByVal actionText As String) As String
+    Dim value As String
+    value = LCase$(Trim$(actionText))
+    If value = "allow" Or value = "accept" Or value = "permit" Or value = "pass" Or value = "허용" Then
+        NormalizePolicyAction = "ALLOW"
+    ElseIf value = "deny" Or value = "drop" Or value = "reject" Or value = "차단" Then
+        NormalizePolicyAction = "DENY"
+    Else
+        NormalizePolicyAction = UCase$(value)
+    End If
+End Function
+
+Private Function NormalizePolicyAddress(ByVal value As String) As String
+    NormalizePolicyAddress = Trim$(Replace(Replace(value, vbCr, ";"), vbLf, ";"))
+End Function
+
+Private Function PolicyFirewallMatches(ByVal requestFirewalls As String, ByVal policyFirewall As String) As Boolean
+    If Len(Trim$(policyFirewall)) = 0 Or IsAnyPolicyValue(policyFirewall) Then
+        PolicyFirewallMatches = True
+    ElseIf Len(Trim$(requestFirewalls)) = 0 Then
+        PolicyFirewallMatches = True
+    Else
+        PolicyFirewallMatches = InStr(1, ";" & requestFirewalls & ";", ";" & policyFirewall & ";", vbTextCompare) > 0
+    End If
+End Function
+
+Private Function PolicyValueMatches(ByVal requestValue As String, ByVal policyValue As String) As Boolean
+    If IsAnyPolicyValue(policyValue) Then
+        PolicyValueMatches = True
+    Else
+        PolicyValueMatches = InStr(1, ";" & policyValue & ";", ";" & requestValue & ";", vbTextCompare) > 0 Or _
+            StrComp(Trim$(requestValue), Trim$(policyValue), vbTextCompare) = 0
+    End If
+End Function
+
+Private Function PolicyServiceMatches(ByVal requestProtocol As String, ByVal requestPort As String, ByVal policyService As String) As Boolean
+    Dim value As String
+    value = LCase$(Trim$(policyService))
+    If IsAnyPolicyValue(value) Then
+        PolicyServiceMatches = True
+    Else
+        PolicyServiceMatches = InStr(1, value, LCase$(requestProtocol), vbTextCompare) > 0 And _
+            (Len(requestPort) = 0 Or InStr(1, value, LCase$(requestPort), vbTextCompare) > 0)
+    End If
+End Function
+
+Private Function IsAnyPolicyValue(ByVal value As String) As Boolean
+    Dim text As String
+    text = UCase$(Trim$(value))
+    IsAnyPolicyValue = (Len(text) = 0 Or text = "ANY" Or text = "ALL" Or text = "*" Or text = "0.0.0.0/0")
+End Function
+
+Private Function HasUnresolvedPolicyObject(ByVal value As String) As Boolean
+    Dim text As String
+    text = Trim$(value)
+    If Len(text) = 0 Or IsAnyPolicyValue(text) Then Exit Function
+    HasUnresolvedPolicyObject = (InStr(1, text, ".", vbTextCompare) = 0 And _
+        InStr(1, text, "/", vbTextCompare) = 0 And _
+        InStr(1, text, "tcp", vbTextCompare) = 0 And _
+        InStr(1, text, "udp", vbTextCompare) = 0 And _
+        InStr(1, text, "icmp", vbTextCompare) = 0 And _
+        Not IsNumeric(text))
+End Function
+
+Private Sub ColorPolicyAnalysisRow(ByVal worksheet As Worksheet, ByVal rowIndex As Long, ByVal statusText As String)
+    Select Case statusText
+        Case "EXISTING_ALLOW"
+            worksheet.Range("A" & rowIndex & ":J" & rowIndex).Interior.Color = RGB(217, 234, 211)
+        Case "EXISTING_DENY", "NO_EXISTING_POLICY"
+            worksheet.Range("A" & rowIndex & ":J" & rowIndex).Interior.Color = RGB(244, 204, 204)
+        Case Else
+            worksheet.Range("A" & rowIndex & ":J" & rowIndex).Interior.Color = RGB(255, 242, 204)
+    End Select
 End Sub
 
 Public Sub MergeFirewallRequestFolder()
@@ -1237,6 +1497,56 @@ Private Sub WriteSecuiCliHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:I1").Value = Array("No", "장비명", "정책명", "명령어", "검토메모", "신청부서", "신청번호", "원본파일", "원본행")
 End Sub
 
+Private Sub WriteSecuiPolicyExportHeaders(ByVal worksheet As Worksheet)
+    If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
+        worksheet.Range("A1:I1").Value = Array("policy_id", "policy_name", "firewall_name", "source", "destination", "service", "action", "enabled", "comment")
+        worksheet.Range("A2:I4").Value = Array( _
+            Array("1001", "ALLOW_WEB_TO_DMZ", "SECUI-FW-01", "10.10.10.5", "10.20.20.5", "tcp/443", "allow", "Y", "기존 허용 정책"), _
+            Array("1002", "DENY_DNS_TO_INTERNET", "SECUI-FW-03", "10.10.10.5", "8.8.8.8", "udp/53", "deny", "Y", "차단 검토 필요"), _
+            Array("1003", "DISABLED_DMZ_TEST", "SECUI-FW-02", "10.10.10.5", "10.20.20.5", "tcp/8443", "allow", "N", "비활성 정책"))
+    End If
+    AnnotateSecuiPolicyExportHeaders worksheet
+End Sub
+
+Private Sub WritePolicyAnalysisHeaders(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:T1").Value = Array("판정", "요청번호", "대상방화벽", "출발지", "목적지", "서비스", "기존정책", "기존정책상태", "근거", "조치", "요청원본행", "정책원본행", "raw_source", "raw_destination", "raw_service", "normalized_source", "normalized_destination", "normalized_protocol", "normalized_port", "debug_note")
+End Sub
+
+Private Sub WritePolicySummarySheet(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:D1").Value = Array("구분", "건수", "검토 기준", "다음 조치")
+    worksheet.Range("A2:D7").Value = Array( _
+        Array("전체", "", "분석 대상 전체", "상태별 건수를 먼저 확인"), _
+        Array("기존 허용", "", "기존 허용 정책이 신청을 커버", "중복 신청 생략 또는 근거 첨부"), _
+        Array("기존 차단", "", "차단 정책과 일치", "방화벽 담당자 검토"), _
+        Array("검토 필요", "", "부분 일치 또는 객체명 미해석", "SECUI 객체/서비스 확인"), _
+        Array("비활성 일치", "", "비활성 정책과 일치", "활성화 가능 여부 검토"), _
+        Array("기존 정책 없음", "", "일치 정책 없음", "신규 정책 생성 검토"))
+    worksheet.Range("B2").Formula = "=COUNTA(policy_analysis!A2:A5000)"
+    worksheet.Range("B3").Formula = "=COUNTIF(policy_analysis!A2:A5000,""EXISTING_ALLOW"")"
+    worksheet.Range("B4").Formula = "=COUNTIF(policy_analysis!A2:A5000,""EXISTING_DENY"")"
+    worksheet.Range("B5").Formula = "=COUNTIF(policy_analysis!A2:A5000,""PARTIAL_MATCH"")+COUNTIF(policy_analysis!A2:A5000,""OBJECT_UNRESOLVED"")"
+    worksheet.Range("B6").Formula = "=COUNTIF(policy_analysis!A2:A5000,""DISABLED_MATCH"")"
+    worksheet.Range("B7").Formula = "=COUNTIF(policy_analysis!A2:A5000,""NO_EXISTING_POLICY"")"
+End Sub
+
+Private Sub AnnotateSecuiPolicyExportHeaders(ByVal worksheet As Worksheet)
+    Dim comments As Variant, c As Long
+    comments = Array( _
+        "필수: SECUI export 정책 ID를 붙여넣습니다.", _
+        "필수: 기존 정책명을 붙여넣습니다.", _
+        "필수: firewalls 시트의 방화벽명과 같은 이름을 붙여넣습니다.", _
+        "필수: 출발지 주소/CIDR/ANY 또는 객체명을 붙여넣습니다.", _
+        "필수: 목적지 주소/CIDR/ANY 또는 객체명을 붙여넣습니다.", _
+        "필수: tcp/443, udp/53, ANY 같은 서비스 표기를 붙여넣습니다.", _
+        "필수: allow/deny/drop/reject/accept/pass 중 하나를 붙여넣습니다.", _
+        "필수: Y/N 또는 TRUE/FALSE 사용여부를 붙여넣습니다.", _
+        "선택: SECUI export 설명이나 운영 메모를 붙여넣습니다.")
+    For c = 1 To SECUI_EXPORT_LAST_COL
+        worksheet.Cells(1, c).ClearComments
+        worksheet.Cells(1, c).AddComment CStr(comments(c - 1))
+    Next c
+End Sub
+
 Private Sub WriteVendorCliTemplateHeaders(ByVal worksheet As Worksheet)
     If Len(CStr(worksheet.Cells(1, 1).Value)) = 0 Then
         worksheet.Range("A1:E1").Value = Array("vendor", "template_name", "enabled", "command_template", "review_note")
@@ -1298,6 +1608,33 @@ Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
     Next c
     worksheet.Rows(1).Font.Bold = True
     worksheet.Range("A1:I1").AutoFilter
+End Sub
+
+Private Sub FormatPolicyAnalysisSheet(ByVal worksheet As Worksheet)
+    Dim widths As Variant, c As Long
+    widths = Array(18, 12, 24, 18, 18, 14, 28, 14, 42, 28, 10, 10, 22, 22, 16, 22, 22, 12, 12, 36)
+    For c = 1 To POLICY_ANALYSIS_LAST_COL
+        worksheet.Columns(c).ColumnWidth = widths(c - 1)
+    Next c
+    worksheet.Rows(1).Font.Bold = True
+    worksheet.Range("A1:T1").AutoFilter
+    worksheet.Range("K:T").EntireColumn.Hidden = True
+    worksheet.Activate
+    worksheet.Range("A2").Select
+    ActiveWindow.FreezePanes = True
+End Sub
+
+Private Sub FormatPolicySummarySheet(ByVal worksheet As Worksheet)
+    Dim widths As Variant, c As Long
+    widths = Array(16, 10, 34, 34)
+    For c = 1 To POLICY_SUMMARY_LAST_COL
+        worksheet.Columns(c).ColumnWidth = widths(c - 1)
+    Next c
+    worksheet.Rows(1).Font.Bold = True
+    worksheet.Range("A1:D7").AutoFilter
+    worksheet.Activate
+    worksheet.Range("A2").Select
+    ActiveWindow.FreezePanes = True
 End Sub
 
 Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)

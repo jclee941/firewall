@@ -39,6 +39,9 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
             "settings",
             "secui_batch",
             "secui_cli",
+            "secui_policy_export",
+            "policy_analysis",
+            "policy_summary",
             "vendor_cli_templates",
             "service_catalog",
         }
