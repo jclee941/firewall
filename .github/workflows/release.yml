@@ -58,7 +58,8 @@ jobs:
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
                   "settings", "header_aliases", "processing_log",
-                  "secui_batch", "secui_cli", "vendor_cli_templates",
+                  "secui_batch", "secui_cli", "secui_policy_export",
+                  "policy_analysis", "policy_summary", "vendor_cli_templates",
                   "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
           assert wb["requests"].max_column == 25, wb["requests"].max_column
@@ -118,6 +119,8 @@ jobs:
           - 하위폴더 재귀 + 폴더명 파싱 (정보보호센터_1234 → 팀/문서번호)
           - 사용자 정의 헤더 별칭 (settings header_alias)
           - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
+          - SECUI export 기반 기존 정책 비교 (`secui_policy_export` → `policy_analysis`)
+          - 기존 허용·차단·검토필요 건수 요약 (`policy_summary`)
 
           첨부물: `firewall-policy-automation-<버전>.xlsm`(단일 파일) + `firewall-policy-automation-<버전>-bundle.zip`(xlsm + request-folder 동봉).
           이 릴리즈는 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
