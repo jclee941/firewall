@@ -170,7 +170,6 @@ Public Sub CreateSampleRequestWorkbook()
     sampleSheet.Range("B2:N2").Value = Array(1, "SECUI-FW-01", "10.10.10.0/24", "업무PC", "172.16.1.10", "업무시스템", "TCP", "443", "IN", "HTTPS 업무 연동", "2026-01-01", "2026-12-31", "정기 신청")
     SafeAutoFitColumns sampleSheet, "A:N"
     sampleSheet.Rows(1).Font.Bold = True
-    SafeApplyAutoFilter sampleSheet, "B1:N1"
 
     outputPath = Application.GetSaveAsFilename(InitialFileName:="firewall-request-template.xlsx", FileFilter:="Excel Workbook (*.xlsx), *.xlsx")
     If outputPath = False Then
@@ -1678,7 +1677,6 @@ End Sub
 Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
     SafeAutoFitColumns worksheet, "A:E"
     worksheet.Rows(1).Font.Bold = True
-    SafeApplyAutoFilter worksheet, "A1:E1"
 End Sub
 
 Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
@@ -1688,7 +1686,6 @@ Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
         worksheet.Columns(c).ColumnWidth = widths(c - 1)
     Next c
     worksheet.Rows(1).Font.Bold = True
-    SafeApplyAutoFilter worksheet, "A1:I1"
 End Sub
 
 Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
@@ -1815,7 +1812,6 @@ Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
     Next c
     worksheet.Rows(REQ_HEADER_GROUP_ROW).Font.Bold = True
     worksheet.Rows(REQ_HEADER_ROW).Font.Bold = True
-    SafeApplyAutoFilter worksheet, "A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String
@@ -1867,21 +1863,11 @@ End Sub
 Private Sub FormatGenericSheet(ByVal worksheet As Worksheet, ByVal cols As String)
     SafeAutoFitColumns worksheet, cols
     worksheet.Rows(1).Font.Bold = True
-    SafeApplyAutoFilter worksheet, Replace(cols, ":", "1:") & "1"
 End Sub
 
 Private Sub SafeAutoFitColumns(ByVal worksheet As Worksheet, ByVal cols As String)
     On Error Resume Next
     worksheet.Columns(cols).AutoFit
-    On Error GoTo 0
-End Sub
-
-Private Sub SafeApplyAutoFilter(ByVal worksheet As Worksheet, ByVal rangeAddress As String)
-    On Error Resume Next
-    If worksheet.FilterMode Then worksheet.ShowAllData
-    If worksheet.AutoFilterMode Then worksheet.AutoFilterMode = False
-    Err.Clear
-    worksheet.Range(rangeAddress).AutoFilter
     On Error GoTo 0
 End Sub
 

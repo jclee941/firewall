@@ -61,6 +61,14 @@ def test_auto_run_suppresses_per_file_error_dialogs():
     assert "If Not mSuppressMessages Then MsgBox" in body
 
 
+def test_runtime_vba_does_not_touch_excel_autofilter_state():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    assert ".AutoFilter" not in src
+    assert ".AutoFilterMode" not in src
+    assert ".FilterMode" not in src
+    assert ".ShowAllData" not in src
+
+
 def test_secui_cli_vba_assigns_dictionary_objects_with_set():
     src = VBA_POLICY.read_text(encoding="utf-8")
     assert "Set serviceFanoutIndex(sourceDestinationKey) = services" in src
