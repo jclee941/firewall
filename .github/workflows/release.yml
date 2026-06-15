@@ -82,6 +82,18 @@ jobs:
           (cd bundle && zip -r ../firewall-policy-automation-bundle.zip .)
           test -f firewall-policy-automation-bundle.zip
 
+      - name: Build Python GUI/CLI bundle with dependencies
+        run: |
+          pip install -r requirements-gui.txt
+          python scripts/build_release_bundle.py --output secui-cli-gui-release.zip
+          test -f secui-cli-gui-release.zip
+
+      - name: Build no-Python Linux GUI bundle
+        run: |
+          pip install pyinstaller
+          python scripts/build_standalone_gui.py --output secui-gui-linux-x64.zip
+          test -f secui-gui-linux-x64.zip
+
       - name: Resolve tag
         id: tag
         run: |
@@ -96,7 +108,9 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           cp dist/firewall-policy-automation.xlsm "firewall-policy-automation-${TAG}.xlsm"
           cp firewall-policy-automation-bundle.zip "firewall-policy-automation-${TAG}-bundle.zip"
-          ls -la firewall-policy-automation-${TAG}.xlsm firewall-policy-automation-${TAG}-bundle.zip
+          cp secui-cli-gui-release.zip "secui-cli-gui-${TAG}.zip"
+          cp secui-gui-linux-x64.zip "secui-gui-linux-x64-${TAG}.zip"
+          ls -la firewall-policy-automation-${TAG}.xlsm firewall-policy-automation-${TAG}-bundle.zip secui-cli-gui-${TAG}.zip secui-gui-linux-x64-${TAG}.zip
 
       - name: Create / update GitHub Release
         env:
@@ -105,10 +119,17 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           NOTES_FILE="$(mktemp)"
           cat > "$NOTES_FILE" <<'EOF'
-          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI CLI를 생성하는 Excel 네이티브(VBA) 도구입니다.
+          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI CLI를 생성하는 도구입니다.
 
           ## 다운로드 / 설치
-          아래 **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
+          - Python 없이 실행: **secui-gui-windows-x64-<버전>.zip** 또는 **secui-gui-linux-x64-<버전>.zip**을 받으세요. native GUI 실행 파일과 샘플 workbook/request-folder가 함께 포함됩니다.
+          - Python 설치형: **secui-cli-gui-<버전>.zip**을 받으세요. Python 소스와 `requirements-gui.txt` 기준 pip wheel 의존성이 함께 포함됩니다.
+          - Excel 방식: **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
+
+          ## Python GUI/CLI 사용
+          - standalone zip은 압축 해제 후 `secui-gui` 또는 `secui-gui.exe`를 실행하세요.
+          - Python 설치형 zip은 `install_offline.sh/.bat` 실행 후 `run_gui.sh/.bat`를 실행하세요.
+          - GUI에서 workbook/request-folder와 export 형식(text/xlsx/both)을 선택 후 Export하세요.
 
           ## 사용 순서
           1. `firewalls` : SECUI 장비명, 벤더, 사용여부
@@ -133,20 +154,68 @@ jobs:
           - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
           - 배치 양식, 기존 정책 export 비교, 정책 요약 시트는 CLI 정합성 우선 범위에서 제거
 
-          첨부물: `firewall-policy-automation-<버전>.xlsm`(단일 파일) + `firewall-policy-automation-<버전>-bundle.zip`(xlsm + request-folder 동봉).
+          첨부물: `secui-gui-windows-x64-<버전>.zip`/`secui-gui-linux-x64-<버전>.zip`(Python 불필요 native standalone), `secui-cli-gui-<버전>.zip`(Python GUI/CLI + wheel 의존성), `firewall-policy-automation-<버전>.xlsm`(단일 파일), `firewall-policy-automation-<버전>-bundle.zip`(xlsm + request-folder 동봉).
           이 릴리즈는 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.
           EOF
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$TAG" \
               "firewall-policy-automation-${TAG}.xlsm" \
               "firewall-policy-automation-${TAG}-bundle.zip" \
+              "secui-cli-gui-${TAG}.zip" \
+              "secui-gui-linux-x64-${TAG}.zip" \
               --repo "${{ github.repository }}" --clobber
           else
             gh release create "$TAG" \
               "firewall-policy-automation-${TAG}.xlsm" \
               "firewall-policy-automation-${TAG}-bundle.zip" \
+              "secui-cli-gui-${TAG}.zip" \
+              "secui-gui-linux-x64-${TAG}.zip" \
               --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
               --title "$TAG — SECUI CLI Generator" \
               --notes-file "$NOTES_FILE"
           fi
+
+  build-standalone-windows:
+    runs-on: windows-latest
+    needs: build-and-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-gui.txt
+          pip install pyinstaller
+
+      - name: Verify GUI/export path
+        run: python -m pytest tests/test_secui_gui.py tests/test_secui_cli_script.py -q
+
+      - name: Build no-Python Windows GUI bundle
+        run: |
+          python scripts/build_standalone_gui.py --output secui-gui-windows-x64.zip
+          if (!(Test-Path secui-gui-windows-x64.zip)) { throw "standalone zip missing" }
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload no-Python Windows GUI bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.tag.outputs.name }}"
+          Copy-Item secui-gui-windows-x64.zip "secui-gui-windows-x64-$tag.zip"
+          gh release upload $tag "secui-gui-windows-x64-$tag.zip" --repo "${{ github.repository }}" --clobber
