@@ -6,7 +6,12 @@ from openpyxl.styles import Font, PatternFill, Protection
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from scripts.workbook_contract import PROTECT_SHEETS, TAB_COLORS
+from scripts.workbook_contract import (
+    OPERATOR_VISIBLE_SHEETS,
+    PROTECT_SHEETS,
+    SUPPORT_DATA_SHEETS,
+    TAB_COLORS,
+)
 
 UX_LAST_ROW = 5000
 REQ_PROTOCOL_COL = 12
@@ -34,18 +39,23 @@ EXPORT_HEADER_COMMENTS = {
     "H": "필수: Y/N 또는 TRUE/FALSE 사용여부를 붙여넣습니다.",
     "I": "선택: SECUI export 설명이나 운영 메모를 붙여넣습니다.",
 }
+CLI_TEMPLATE_HEADER_COMMENTS = {
+    "A": "벤더명입니다. SECUI CLI 생성은 SECUI 행을 사용합니다.",
+    "B": "템플릿 이름입니다. 운영자가 구분하기 위한 값입니다.",
+    "C": "Y이면 사용합니다. 같은 벤더에서 처음 만나는 사용 템플릿을 적용합니다.",
+    "D": "CLI 명령 템플릿입니다. {policy_name_q}, {source_interface_q}, {destination_interface_q}, {source_object_q}, {destination_object_q}, {service_object_q}, {description_q}, {firewall_name} 등을 사용할 수 있습니다.",
+    "E": "secui_cli 검토메모 컬럼에 복사될 안내 문구입니다.",
+}
 USAGE_LINKS = (
     ("requests", "신청 통합/분석 결과"),
     ("firewalls", "방화벽 장비 목록"),
-    ("firewall_ranges", "출발지/목적지 통과 대역"),
     ("settings", "신청서 폴더와 파싱 설정"),
     ("secui_batch", "SECUI 배치 입력용 출력"),
     ("secui_cli", "SECUI CLI 명령 초안"),
     ("secui_policy_export", "SECUI 기존 정책 export 붙여넣기"),
     ("policy_analysis", "기존 정책 분석 결과"),
     ("policy_summary", "기존 정책 분석 요약"),
-    ("vendor_cli_templates", "벤더별 CLI 템플릿"),
-    ("service_catalog", "SECUI 서비스 표기 예시"),
+    ("vendor_cli_templates", "SECUI CLI 템플릿 설정"),
 )
 
 
@@ -71,11 +81,15 @@ def apply_ux(wb) -> None:
 
     if "sample-request-format" in wb.sheetnames:
         sf = wb["sample-request-format"]
-        add_list_validation(sf, "G", ["TCP", "UDP", "ICMP"])
-        add_list_validation(sf, "I", ["IN", "OUT", "BOTH"])
+        add_list_validation(sf, "H", ["TCP", "UDP", "ICMP"])
+        add_list_validation(sf, "J", ["IN", "OUT", "BOTH"])
 
     if "usage" in wb.sheetnames:
         usage = wb["usage"]
+        for row in range(1, usage.max_row + 1):
+            for column in (3, 4):
+                usage.cell(row, column).value = None
+                usage.cell(row, column).hyperlink = None
         usage.cell(1, 3, "바로가기")
         usage.cell(1, 4, "설명")
         usage.column_dimensions["C"].width = 24
@@ -87,6 +101,13 @@ def apply_ux(wb) -> None:
             cell.font = LINK_FONT
             usage.cell(row, 4, description)
         wb.active = wb.sheetnames.index("usage")
+
+    for name in OPERATOR_VISIBLE_SHEETS:
+        if name in wb.sheetnames:
+            wb[name].sheet_state = "visible"
+    for name in SUPPORT_DATA_SHEETS:
+        if name in wb.sheetnames:
+            wb[name].sheet_state = "hidden"
 
     fw = wb["firewalls"]
     add_list_validation(fw, "C", ["Y", "N"])
@@ -100,6 +121,12 @@ def apply_ux(wb) -> None:
             export[f"{column}1"].comment = Comment(text, "firewall-automation")
         add_list_validation(export, "G", ["allow", "deny", "drop", "reject", "accept", "pass"])
         add_list_validation(export, "H", ["Y", "N", "TRUE", "FALSE"])
+
+    if "vendor_cli_templates" in wb.sheetnames:
+        templates = wb["vendor_cli_templates"]
+        for column, text in CLI_TEMPLATE_HEADER_COMMENTS.items():
+            templates[f"{column}1"].comment = Comment(text, "firewall-automation")
+        add_list_validation(templates, "C", ["Y", "N"])
 
     if "policy_analysis" in wb.sheetnames:
         analysis = wb["policy_analysis"]

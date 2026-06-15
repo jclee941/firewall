@@ -131,4 +131,3 @@ def test_vba_has_read_only_secui_policy_analysis_macro() -> None:
     assert "WritePolicyAnalysisHeaders" in src
     assert "CopySecuiCliRows" in src
     assert "AnalyzeSecuiPolicyExport" in src
-    assert "Application.Run \"FirewallRouteAnalysis.AnalyzeRequestRoutes\"" in src

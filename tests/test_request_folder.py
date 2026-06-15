@@ -1,13 +1,3 @@
-"""Verify scripts/make_request_folder.py produces a valid, analyzable folder tree.
-
-LibreOffice macro execution is unavailable, so we prove the generated request
-files parse with the same logic the VBA uses (request_parser_oracle) and resolve
-to real firewall paths through the route engine seeded from build_xlsm constants,
-including multi-firewall (multi-hop) paths.
-
-Run: .venv/bin/python -m pytest tests/test_request_folder.py -v
-"""
-
 import glob
 import os
 import subprocess
@@ -20,10 +10,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REQ_DIR = os.path.join(ROOT, "request-folder")
 PY = sys.executable
 
-sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
-from request_parser_oracle import parse_request_sheet, sheet_to_filled_rows  # noqa: E402
-from route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
+sys.path.insert(0, ROOT)
+from tests.request_parser_oracle import parse_request_sheet, sheet_to_filled_rows  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -34,21 +23,6 @@ def request_tree():
     )
     assert os.path.isdir(REQ_DIR)
     return REQ_DIR
-
-
-def _seed_engine():
-    from build_xlsm import FIREWALLS, FIREWALL_RANGES
-
-    def truthy(v):
-        return str(v).upper() in ("Y", "YES", "TRUE", "1")
-
-    fws = [Firewall(r[0], r[1], truthy(r[2]))
-           for r in FIREWALLS[1:]]
-    ranges = [
-        FirewallRange(r[0], r[1], r[2], r[3], int(r[4]), truthy(r[5]), r[6])
-        for r in FIREWALL_RANGES[1:]
-    ]
-    return RouteEngine(firewalls=fws, firewall_ranges=ranges)
 
 
 def test_tree_structure(request_tree):
@@ -70,8 +44,7 @@ def test_empty_template_parses_to_zero_rows(request_tree):
     assert parsed == [], "blank template must yield no data rows (header only)"
 
 
-def test_each_request_parses_and_resolves(request_tree):
-    eng = _seed_engine()
+def test_each_request_parses_with_cli_targets(request_tree):
     xlsx = sorted(glob.glob(os.path.join(request_tree, "**", "*.xlsx"), recursive=True))
     data_files = [f for f in xlsx if "빈양식" not in os.path.basename(f)]
     assert data_files
@@ -83,11 +56,10 @@ def test_each_request_parses_and_resolves(request_tree):
         assert parsed, f"no rows parsed from {f}"
         total_rows += len(parsed)
         for req in parsed:
-            res = eng.analyze(req["source_ip"], req["dest_ip"], req["direction"])
-            assert res.status == "OK", f"{f}: {req} -> {res.status}"
-            assert res.target_firewalls, f"{f}: {req} produced no firewalls"
-            if len([x for x in res.target_firewalls.split(";") if x]) >= 2:
+            targets = [x for x in str(req["target_firewalls"] or "").split(";") if x]
+            assert targets, f"{f}: {req} has no target_firewalls"
+            assert all(target.startswith("SECUI-FW-") for target in targets)
+            if len(targets) >= 2:
                 multi_fw += 1
     assert total_rows >= 4
-    # the folder must exercise multi-firewall (multi-hop) routing, not just 1-hop
     assert multi_fw >= 2, f"expected >=2 multi-firewall requests, got {multi_fw}"

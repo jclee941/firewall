@@ -87,7 +87,8 @@ def test_sheets_and_headers(xlsm_path):
     expected_headers = {
         "firewalls": ["firewall_name", "vendor", "enabled", "comment"],
         "firewall_ranges": ["firewall_name", "source_cidr", "destination_cidr",
-                            "direction", "path_order", "enabled", "comment"],
+                            "direction", "path_order", "enabled", "comment",
+                            "source_interface", "destination_interface", "source_zone", "destination_zone"],
         "settings": ["key", "value", "\uc124\uba85"],
         "header_aliases": ["standard", "your_column", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
@@ -128,13 +129,46 @@ def test_sheets_and_headers(xlsm_path):
     assert "H1:I1" in merged, f"출발지 group not merged H1:I1: {merged}"
     assert "J1:K1" in merged, f"목적지 group not merged J1:K1: {merged}"
 
-    # sample-request-format: blank A header, then the request template B..M.
     sf = wb["sample-request-format"]
     assert sf.cell(1, 1).value in (None, ""), "sample A1 must be blank"
-    assert [sf.cell(1, c).value for c in range(2, 14)] == [
-        "No", "\ucd9c\ubc1c\uc9c0IP", "\ucd9c\ubc1c\uc9c0", "\ubaa9\uc801\uc9c0IP", "\ubaa9\uc801\uc9c0",
+    assert [sf.cell(1, c).value for c in range(2, 15)] == [
+        "No", "\ub300\uc0c1\ubc29\ud654\ubcbd", "\ucd9c\ubc1c\uc9c0IP", "\ucd9c\ubc1c\uc9c0", "\ubaa9\uc801\uc9c0IP", "\ubaa9\uc801\uc9c0",
         "\ud504\ub85c\ud1a0\ucf5c", "\ud3ec\ud2b8", "\ubc29\ud5a5", "\uc6a9\ub3c4", "\uc2dc\uc791\uc77c", "\uc885\ub8cc\uc77c", "\ube44\uace0",
     ]
+
+
+def test_operator_workbook_shows_only_work_sheets(xlsm_path):
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+
+    visible_sheets = {
+        "usage",
+        "requests",
+        "settings",
+        "firewalls",
+        "secui_policy_export",
+        "policy_summary",
+        "policy_analysis",
+        "secui_batch",
+        "secui_cli",
+        "vendor_cli_templates",
+    }
+    support_data_sheets = {
+        "header_aliases",
+        "firewall_ranges",
+        "processing_log",
+        "service_catalog",
+        "sample-request-format",
+    }
+
+    assert {
+        name
+        for name in wb.sheetnames
+        if wb[name].sheet_state == "visible"
+    } == visible_sheets
+    for sheet in support_data_sheets:
+        assert wb[sheet].sheet_state == "hidden", f"{sheet} must be hidden support data"
+    assert wb.active is not None
+    assert wb.active.title == "usage"
 
 
 def test_seed_data_present(xlsm_path):
@@ -150,9 +184,11 @@ def test_seed_data_present(xlsm_path):
     assert template.cell(2, 3).value == "Y"
     command_template = str(template.cell(2, 4).value or "")
     assert "{policy_name_q}" in command_template
-    assert "{source_ip_q}" in command_template
-    assert "{destination_ip_q}" in command_template
-    assert "{service_q}" in command_template
+    assert "{source_interface_q}" in command_template
+    assert "{destination_interface_q}" in command_template
+    assert "{source_object_q}" in command_template
+    assert "{destination_object_q}" in command_template
+    assert "{service_object_q}" in command_template
 
 
 def _engine_from_xlsm(wb):
@@ -277,12 +313,38 @@ def test_secui_cli_macro_generates_fw_set_srule_commands():
     assert "WriteVendorCliTemplateHeaders" in src
     assert "LoadSecuiFirewalls(firewallsSheet)" in src
     assert "LoadVendorCliTemplate(templateSheet, " in src
+    assert "CollectSecuiCliRows" in src
+    assert "WriteSecuiCliGroup" in src
     assert "CopySecuiCliRows" in src
     assert "RenderVendorCliTemplate" in src
     assert "SecuiCliCommand" in src
     assert "DefaultVendorCliTemplate" in src
     assert "{policy_name_q}" in src
+    assert "{source_interface_q}" in src
+    assert "{destination_interface_q}" in src
     assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
+
+
+def test_secui_cli_conversion_does_not_run_route_analysis(xlsm_path):
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    assert wb["requests"].cell(3, 7).value == "SECUI-FW-01"
+
+    src = open(VBA_POLICY, encoding="utf-8").read()
+    macro_start = src.find("Public Sub ConvertRequestsToSecuiCli()")
+    macro_end = src.find("End Sub", macro_start)
+    cli_src = src[macro_start:macro_end]
+    assert "AnalyzeRequestRoutes" not in cli_src
+    assert "CollectSecuiCliRows" in cli_src
+
+
+def test_vendor_cli_template_sheet_is_operator_configured(xlsm_path):
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    ws = wb["vendor_cli_templates"]
+    assert ws.sheet_state == "visible"
+    comment = ws.cell(1, 4).comment
+    assert comment is not None
+    assert "{policy_name_q}" in comment.text
+    assert any("C2:C5000" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
 
 
 def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
@@ -297,6 +359,12 @@ def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
     def service(proto, port):
         return clean(f"{proto.lower()}/{str(port).strip()}")
 
+    def object_token(value):
+        result = "".join(ch if ch.isalnum() and ch.isascii() else "_" for ch in clean(value))
+        while "__" in result:
+            result = result.replace("__", "_")
+        return result.strip("_").upper() or "ANY"
+
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     template = wb["vendor_cli_templates"].cell(2, 4).value
     assert isinstance(template, str)
@@ -310,8 +378,11 @@ def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
     assert template == vba_default.group(1)
     assert 'targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")' in src
     assert "For Each firewallValue In targetFirewalls" in src
-    assert "WriteSecuiCliRow requestsSheet, secuiCliSheet, requestRow, cliRow, firewallName, cliTemplate" in src
+    assert "WriteSecuiCliGroup requestsSheet, secuiCliSheet, cliGroups(groupKey), cliRow, cliTemplate" in src
     assert "cliRow = cliRow + 1" in src
+    assert "SecuiGroupObjectCommands" in src
+    assert "FirstMatchingFirewallRangeInfo" in src
+    assert "SecuiPolicyObjectReference" in src
 
     request = {
         "doc_no": "REQ-1",
@@ -327,22 +398,26 @@ def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
 
     rows = []
     for firewall_name in request["targets"].split(";"):
-        policy_name = clean(
+        policy_name = object_token(
             "_".join([
                 request["doc_no"],
                 firewall_name,
-                request["protocol"],
-                request["port"],
-                request["source"],
+                "INTERNAL_TO_SERVER",
+                service(request["protocol"], request["port"]),
                 request["destination"],
             ])
         )[:120]
         description = clean(f"{request['purpose']} / {request['status']}")[:255]
+        source_group = f"GRP_SRC_INTERNAL_TO_SERVER_{policy_name}"
+        destination_group = f"GRP_DST_INTERNAL_TO_SERVER_{policy_name}"
+        service_group = f"GRP_SVC_INTERNAL_TO_SERVER_{policy_name}"
         command = template
         command = command.replace("{policy_name_q}", quote(policy_name))
-        command = command.replace("{source_ip_q}", quote(request["source"]))
-        command = command.replace("{destination_ip_q}", quote(request["destination"]))
-        command = command.replace("{service_q}", quote(service(request["protocol"], request["port"])))
+        command = command.replace("{source_interface_q}", quote("inside"))
+        command = command.replace("{destination_interface_q}", quote("server"))
+        command = command.replace("{source_object_q}", quote(source_group))
+        command = command.replace("{destination_object_q}", quote(destination_group))
+        command = command.replace("{service_object_q}", quote(service_group))
         command = command.replace("{description_q}", quote(description))
         command = command.replace("{firewall_name}", clean(firewall_name))
         rows.append((firewall_name, policy_name, command))
@@ -351,11 +426,15 @@ def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
     assert rows[0][0] == "SECUI-FW-01"
     assert rows[1][0] == "SECUI-FW-02"
     assert rows[0][2] == (
-        'fw set srule name "REQ-1_SECUI-FW-01_TCP_443_10.10.10.5_172.16.1.10" '
-        'action allow src "10.10.10.5" dst "172.16.1.10" service "tcp/443" '
+        'fw set srule name "REQ_1_SECUI_FW_01_INTERNAL_TO_SERVER_TCP_443_172_16_1_10" '
+        'action allow srcif "inside" dstif "server" '
+        'src "GRP_SRC_INTERNAL_TO_SERVER_REQ_1_SECUI_FW_01_INTERNAL_TO_SERVER_TCP_443_172_16_1_10" '
+        'dst "GRP_DST_INTERNAL_TO_SERVER_REQ_1_SECUI_FW_01_INTERNAL_TO_SERVER_TCP_443_172_16_1_10" '
+        'service "GRP_SVC_INTERNAL_TO_SERVER_REQ_1_SECUI_FW_01_INTERNAL_TO_SERVER_TCP_443_172_16_1_10" '
         'log enable enable yes description "HTTPS 업무 연동 / OK" # device=SECUI-FW-01'
     )
-    assert rows[1][2] == rows[0][2].replace("SECUI-FW-01", "SECUI-FW-02")
+    assert 'srule name "REQ_1_SECUI_FW_02_INTERNAL_TO_SERVER_TCP_443_172_16_1_10"' in rows[1][2]
+    assert "# device=SECUI-FW-02" in rows[1][2]
     assert service("ICMP", "") == "icmp/"
 
 
@@ -387,38 +466,19 @@ def test_route_macro_colors_target_firewall_cell():
     assert "targetCell.Interior.Color = RGB(217, 234, 211)" in src
 
 
-def test_duplicate_marking_runs_after_route_analysis():
-    """MarkDuplicateRequests must run AFTER AnalyzeRequestRoutes.
-
-    AnalyzeRequestRoutes.WriteResultRow unconditionally writes validation_status /
-    validation_message. If MarkDuplicateRequests ran BEFORE it, the DUPLICATE
-    status/message it wrote via AppendValidationMessage would be silently
-    overwritten (only row highlighting would survive). Running it after lets
-    AppendValidationMessage MERGE the DUPLICATE marker onto the route-owned status.
-    """
+def test_merge_marks_duplicates_without_running_route_analysis():
     src = open(VBA_POLICY, encoding="utf-8").read()
-    run_pos = src.find('Application.Run "FirewallRouteAnalysis.AnalyzeRequestRoutes"')
+    merge_start = src.find("Public Sub MergeFirewallRequestFolder()")
+    merge_end = src.find("End Sub", merge_start)
+    merge_src = src[merge_start:merge_end]
     dup_pos = src.find("MarkDuplicateRequests requestsSheet")
-    assert run_pos != -1, "route-analysis call not found"
+    assert "AnalyzeRequestRoutes" not in merge_src
     assert dup_pos != -1, "MarkDuplicateRequests call not found"
-    assert dup_pos > run_pos, \
-        "MarkDuplicateRequests must run AFTER AnalyzeRequestRoutes so its DUPLICATE " \
-        "status merges onto (not is overwritten by) the route result"
 
 
-def test_duplicate_highlight_preserves_route_status_color():
-    """Duplicate row highlighting must NOT clobber the route-owned status-cell color.
-
-    Since MarkDuplicateRequests now runs AFTER AnalyzeRequestRoutes, a bare
-    `Rows(rowIndex).Interior.Color = ...` would overwrite the validation_status
-    cell color (column 15) that WriteResultRow set to encode OK/DIRECTION_MISMATCH/severity.
-    The highlight must save and restore that one cell's color.
-    """
+def test_duplicate_highlight_preserves_validation_status_color():
     src = open(VBA_POLICY, encoding="utf-8").read()
-    # the duplicate marker must route row highlighting through the color-preserving
-    # helper, not color whole rows directly inside MarkDuplicateRequests.
     assert "HighlightDuplicateRow" in src, "missing color-preserving highlight helper"
-    # the helper must restore the validation_status cell color after the row fill
     helper_start = src.find("Private Sub HighlightDuplicateRow")
     assert helper_start != -1
     helper = src[helper_start:helper_start + 600]

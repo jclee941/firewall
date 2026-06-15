@@ -106,7 +106,7 @@ def _write_rows(ws, rows):
 _AUTO_RUN_BODY = (
     "\r\n"
     "Private Sub Workbook_Open()\r\n"
-    "    ' Auto-run on open: integrate + analyze the request folder.\r\n"
+    "    ' Auto-run on open: integrate the request folder.\r\n"
     "    On Error GoTo AutoRunErr\r\n"
     "    Application.Run \"FirewallPolicyAutomation.MergeFirewallRequestFolder\"\r\n"
     "    Exit Sub\r\n"

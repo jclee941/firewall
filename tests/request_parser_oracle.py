@@ -17,6 +17,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+type CellValue = str | int | float | bool | date | datetime | None
+type SheetRows = list[list[CellValue]]
+type RequestRow = dict[str, CellValue]
+type NamedSheetRows = list[tuple[str, SheetRows]]
+
 
 def _format_metadata_date(value) -> str:
     """Format a date-typed cell as yyyy-mm-dd (locale-independent).
@@ -55,6 +60,8 @@ def header_key(text) -> str:
 
 _ALIASES = {
     "no": ["no", "\ubc88\ud638", "\uc21c\ubc88", "\uc5f0\ubc88", "seq", "\uc21c\uc11c", "\ud56d\ubc88", "\uc77c\ub828\ubc88\ud638", "\ubc88", "#"],
+    "\ub300\uc0c1\ubc29\ud654\ubcbd": ["\ub300\uc0c1\ubc29\ud654\ubcbd", "\ub300\uc0c1fw", "targetfirewalls", "targetfirewall",
+               "firewall", "firewalls", "fw", "\uc7a5\ube44\uba85", "\ubc29\ud654\ubcbd\uba85"],
     "\ucd9c\ubc1c\uc9c0ip": ["\ucd9c\ubc1c\uc9c0ip", "\ucd9c\ubc1cip", "sourceip", "source", "srcip", "src",
                 "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c", "\uc1a1\uc2e0ip", "\uc6d0\ubcf8ip"],
     "\ucd9c\ubc1c\uc9c0": ["\ucd9c\ubc1c\uc9c0", "\ucd9c\ubc1c\uc9c0\uba85", "\ucd9c\ubc1c", "srcname",
@@ -89,7 +96,7 @@ _ALIASES = {
 # iterate cases in source order and return the first whose alias list contains
 # the key.
 _CASE_ORDER = [
-    "no", "출발지ip", "출발지", "목적지ip", "목적지",
+    "no", "대상방화벽", "출발지ip", "출발지", "목적지ip", "목적지",
     "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고",
 ]
 
@@ -115,7 +122,7 @@ class RequestParseError(Exception):
     pass
 
 
-def sheet_to_filled_rows(ws, user_aliases: dict[str, str] | None = None) -> list[list]:
+def sheet_to_filled_rows(ws, user_aliases: dict[str, str] | None = None) -> SheetRows:
     """Read an openpyxl worksheet into list[list], propagating merged-cell
     values ONLY across DATA rows (rows after the header row).
 
@@ -169,7 +176,7 @@ def _is_merged_continuation_row(ws, r1: int) -> bool:
     return False
 
 
-def _row_has_own_request_value(rows: list[list[object | None]], r1: int, hmap: dict[str, int]) -> bool:
+def _row_has_own_request_value(rows: SheetRows, r1: int, hmap: dict[str, int]) -> bool:
     for name, col in hmap.items():
         if name == "no":
             continue
@@ -179,7 +186,7 @@ def _row_has_own_request_value(rows: list[list[object | None]], r1: int, hmap: d
     return False
 
 
-def _cell(rows: list[list], r1: int, c1: int):
+def _cell(rows: SheetRows, r1: int, c1: int) -> CellValue | str:
     """1-based access; returns '' when out of range (mirrors empty cell)."""
     if r1 - 1 < 0 or r1 - 1 >= len(rows):
         return ""
@@ -190,7 +197,7 @@ def _cell(rows: list[list], r1: int, c1: int):
     return "" if v is None else v
 
 
-def _opt(rows: list[list], r1: int, hmap: dict, name: str):
+def _opt(rows: SheetRows, r1: int, hmap: dict[str, int], name: str) -> CellValue | str:
     """Read an OPTIONAL column by canonical name: '' if the column is absent."""
     col = hmap.get(name)
     if not col:
@@ -231,7 +238,7 @@ def _norm_text(value) -> str:
     return s
 
 
-def _last_column(rows: list[list], r1: int) -> int:
+def _last_column(rows: SheetRows, r1: int) -> int:
     # mirror End(xlToLeft): index (1-based) of the last non-empty cell in the row
     if r1 - 1 >= len(rows):
         return 0
@@ -248,8 +255,8 @@ _FIELD_HEADERS = frozenset(_CASE_ORDER) - {"no"}
 _IP_HEADERS = frozenset({"\ucd9c\ubc1c\uc9c0ip", "\ubaa9\uc801\uc9c0ip"})
 
 
-def _row_header_signature(rows: list[list], r1: int,
-                          user_aliases: dict[str, str] | None = None):
+def _row_header_signature(rows: SheetRows, r1: int,
+                          user_aliases: dict[str, str] | None = None) -> tuple[int, bool, bool]:
     """Return (field_count, has_no, has_ip) describing how header-like a row is.
 
     A cell is a recognized field header if it canonicalizes (built-in alias, then
@@ -274,7 +281,7 @@ def _row_header_signature(rows: list[list], r1: int,
     return len(canon_seen), has_no, has_ip
 
 
-def find_header_row(rows: list[list],
+def find_header_row(rows: SheetRows,
                     user_aliases: dict[str, str] | None = None) -> int:
     """Locate the header row by its HEADER CONTENT (not by requiring a 'No' cell).
 
@@ -301,7 +308,7 @@ def find_header_row(rows: list[list],
     raise RequestParseError(
         "\ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: \ucd9c\ubc1c\uc9c0IP/\ubaa9\uc801\uc9c0IP \uc5f4\uc774 \uc788\ub294 \ud589\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.")
 
-def sheet_header_score(rows: list[list],
+def sheet_header_score(rows: SheetRows,
                        user_aliases: dict[str, str] | None = None) -> int:
     """Score how header-like a sheet is, for cross-sheet comparison.
 
@@ -320,7 +327,7 @@ def sheet_header_score(rows: list[list],
     return best
 
 
-def find_request_sheet(sheets: list[list[list]],
+def find_request_sheet(sheets: list[SheetRows],
                        user_aliases: dict[str, str] | None = None) -> int:
     """Pick the index of the sheet whose best header row scores highest.
 
@@ -341,7 +348,7 @@ def find_request_sheet(sheets: list[list[list]],
         "\ud5e4\ub354 \ud589\uc744 \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: \ucd9c\ubc1c\uc9c0IP/\ubaa9\uc801\uc9c0IP \uc5f4\uc774 \uc788\ub294 \uc2dc\ud2b8\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.")
 
 
-def select_request_sheet(named_sheets: list,
+def select_request_sheet(named_sheets: NamedSheetRows,
                          parse_sheet_name: str = "",
                          user_aliases: dict[str, str] | None = None) -> int:
     """Pick the sheet index honoring an explicit `parse_sheet` setting.
@@ -366,7 +373,7 @@ def select_request_sheet(named_sheets: list,
     raise RequestParseError(
         "\ud30c\uc2f1 \ub300\uc0c1 \uc2dc\ud2b8\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: " + parse_sheet_name)
 
-def build_header_map(rows: list[list], header_row: int,
+def build_header_map(rows: SheetRows, header_row: int,
                      user_aliases: dict[str, str] | None = None) -> dict[str, int]:
     hmap: dict[str, int] = {}
     last_col = _last_column(rows, header_row)
@@ -387,9 +394,9 @@ def validate_required_headers(hmap: dict[str, int]) -> None:
             raise RequestParseError(f"필수 컬럼 누락: {req}")
 
 
-def _source_last_row(rows: list[list], hmap: dict[str, int]) -> int:
+def _source_last_row(rows: SheetRows, hmap: dict[str, int]) -> int:
     # mirror SourceLastRow: max of last non-empty row over 출발지ip and 목적지ip
-    def last_nonempty(col):
+    def last_nonempty(col: int) -> int:
         last = 0
         for r1 in range(1, len(rows) + 1):
             if str(_cell(rows, r1, col)).strip() != "":
@@ -398,13 +405,13 @@ def _source_last_row(rows: list[list], hmap: dict[str, int]) -> int:
     return max(last_nonempty(hmap["출발지ip"]), last_nonempty(hmap["목적지ip"]))
 
 
-def _row_has_data(rows, r1, hmap) -> bool:
+def _row_has_data(rows: SheetRows, r1: int, hmap: dict[str, int]) -> bool:
     return (str(_cell(rows, r1, hmap["출발지ip"])).strip() != "" or
             str(_cell(rows, r1, hmap["목적지ip"])).strip() != "")
 
 
-def parse_request_sheet(rows: list[list],
-                        user_aliases: dict[str, str] | None = None) -> list[dict]:
+def parse_request_sheet(rows: SheetRows,
+                        user_aliases: dict[str, str] | None = None) -> list[RequestRow]:
     """Parse a raw sheet into canonical request dicts.
 
     Returns one dict per data row with keys mirroring CopyRequestRow:
@@ -418,12 +425,13 @@ def parse_request_sheet(rows: list[list],
     validate_required_headers(hmap)
 
     last_row = _source_last_row(rows, hmap)
-    out: list[dict] = []
+    out: list[RequestRow] = []
     for r1 in range(header_row + 1, last_row + 1):
         if not _row_has_data(rows, r1, hmap):
             continue
         out.append({
             "source_row": r1,
+            "target_firewalls": _norm_list(_opt(rows, r1, hmap, "대상방화벽")),
             "source_ip": _norm_list(_opt(rows, r1, hmap, "출발지ip")),
             "source_name": _norm_text(_opt(rows, r1, hmap, "출발지")),
             "dest_ip": _norm_list(_opt(rows, r1, hmap, "목적지ip")),
@@ -455,13 +463,11 @@ def split_list(normalized: str) -> list[str]:
     return [tok for tok in s.split(";") if tok != ""] or [""]
 
 
-def explode_request_row(row: dict) -> list[dict]:
-    """Expand a single parsed request dict into its 출발지IP × 목적지IP × 포트
-    cartesian product. All other fields repeat across exploded rows."""
-    srcs = split_list(row.get("source_ip", ""))
-    dsts = split_list(row.get("dest_ip", ""))
-    ports = split_list(row.get("port", ""))
-    out: list[dict] = []
+def explode_request_row(row: RequestRow) -> list[RequestRow]:
+    srcs = split_list(str(row.get("source_ip", "") or ""))
+    dsts = split_list(str(row.get("dest_ip", "") or ""))
+    ports = split_list(str(row.get("port", "") or ""))
+    out: list[RequestRow] = []
     for s in srcs:
         for d in dsts:
             for p in ports:
@@ -473,10 +479,10 @@ def explode_request_row(row: dict) -> list[dict]:
     return out
 
 
-def parse_request_sheet_exploded(rows: list[list],
-                                 user_aliases: dict[str, str] | None = None) -> list[dict]:
+def parse_request_sheet_exploded(rows: SheetRows,
+                                 user_aliases: dict[str, str] | None = None) -> list[RequestRow]:
     """parse_request_sheet then explode each row into its cartesian product."""
-    out: list[dict] = []
+    out: list[RequestRow] = []
     for row in parse_request_sheet(rows, user_aliases):
         out.extend(explode_request_row(row))
     return out

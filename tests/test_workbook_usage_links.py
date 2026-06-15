@@ -35,7 +35,6 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
         targets = {
             "requests",
             "firewalls",
-            "firewall_ranges",
             "settings",
             "secui_batch",
             "secui_cli",
@@ -43,7 +42,6 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
             "policy_analysis",
             "policy_summary",
             "vendor_cli_templates",
-            "service_catalog",
         }
 
         links: dict[str, str] = {}
@@ -61,3 +59,12 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
     assert targets <= set(links)
     for sheet in targets:
         assert links[sheet] == f"#'{sheet}'!A1"
+
+    hidden_targets = {
+        "header_aliases",
+        "firewall_ranges",
+        "processing_log",
+        "service_catalog",
+        "sample-request-format",
+    }
+    assert hidden_targets.isdisjoint(links)

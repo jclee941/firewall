@@ -19,13 +19,13 @@ FIREWALLS: Final = [
 ]
 
 FIREWALL_RANGES: Final = [
-    ["firewall_name", "source_cidr", "destination_cidr", "direction", "path_order", "enabled", "comment"],
-    ["SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10, "Y", "업무PC -> 서버"],
-    ["SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10, "Y", "업무PC -> DMZ"],
-    ["SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20, "Y", "업무PC -> DMZ"],
-    ["SECUI-FW-01", "10.10.0.0/16", "8.8.8.0/24", "OUT", 10, "Y", "업무PC -> 외부 DNS"],
-    ["SECUI-FW-02", "10.10.0.0/16", "8.8.8.0/24", "OUT", 20, "Y", "업무PC -> 외부 DNS"],
-    ["SECUI-FW-03", "10.10.0.0/16", "8.8.8.0/24", "OUT", 30, "Y", "업무PC -> 외부 DNS"],
+    ["firewall_name", "source_cidr", "destination_cidr", "direction", "path_order", "enabled", "comment", "source_interface", "destination_interface", "source_zone", "destination_zone"],
+    ["SECUI-FW-01", "10.10.0.0/16", "172.16.0.0/16", "OUT", 10, "Y", "업무PC -> 서버", "inside", "server", "INTERNAL", "SERVER"],
+    ["SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10, "Y", "업무PC -> DMZ", "inside", "dmz", "INTERNAL", "DMZ"],
+    ["SECUI-FW-02", "10.10.0.0/16", "10.20.0.0/16", "OUT", 20, "Y", "업무PC -> DMZ", "server", "dmz", "SERVER", "DMZ"],
+    ["SECUI-FW-01", "10.10.0.0/16", "8.8.8.0/24", "OUT", 10, "Y", "업무PC -> 외부 DNS", "inside", "outside", "INTERNAL", "EXTERNAL"],
+    ["SECUI-FW-02", "10.10.0.0/16", "8.8.8.0/24", "OUT", 20, "Y", "업무PC -> 외부 DNS", "server", "outside", "SERVER", "EXTERNAL"],
+    ["SECUI-FW-03", "10.10.0.0/16", "8.8.8.0/24", "OUT", 30, "Y", "업무PC -> 외부 DNS", "dmz", "outside", "DMZ", "EXTERNAL"],
 ]
 
 SETTINGS: Final = [
@@ -101,7 +101,7 @@ VENDOR_CLI_TEMPLATES: Final = [
         "SECUI",
         "default_allow_srule",
         "Y",
-        "fw set srule name {policy_name_q} action allow src {source_ip_q} dst {destination_ip_q} service {service_q} log enable enable yes description {description_q} # device={firewall_name}",
+        "fw set srule name {policy_name_q} action allow srcif {source_interface_q} dstif {destination_interface_q} src {source_object_q} dst {destination_object_q} service {service_object_q} log enable enable yes description {description_q} # device={firewall_name}",
         "장비 CLI에서 'fw set srule help'로 옵션명 확인 후 적용",
     ],
 ]
@@ -128,26 +128,27 @@ HEADER_ALIASES: Final = [
 ]
 
 SAMPLE_FORMAT: Final = [
-    [None, "No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
+    [None, "No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
      "방향", "용도", "시작일", "종료일", "비고"],
-    [None, 1, "10.10.10.5", "업무PC", "172.16.1.10", "업무시스템", "TCP", "443",
+    [None, 1, "SECUI-FW-01", "10.10.10.5", "업무PC", "172.16.1.10", "업무시스템", "TCP", "443",
      "IN", "HTTPS 업무 연동", "2026-01-01", "2026-12-31", "정기 신청"],
 ]
 
 USAGE: Final = [
     ["Step", "Action"],
     ["1", "firewalls 시트에 방화벽 장비명, 벤더, 사용여부를 등록한다"],
-    ["2", "firewall_ranges 시트에 출발지대역, 목적지대역, 방향, 순서를 등록한다"],
-    ["3", "service_catalog 시트에서 SECUI 서비스 표기 예시(tcp/443 등)를 확인한다"],
-    ["4", "대역은 IP/CIDR/ANY를 쓸 수 있고 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
+    ["2", "requests 또는 신청서 원본의 대상방화벽에 SECUI 장비명을 입력한다. 여러 장비는 ; 로 구분한다"],
+    ["3", "vendor_cli_templates 시트에서 SECUI CLI 템플릿과 검토 메모를 확인한다"],
+    ["4", "IP/CIDR/포트 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
     ["5", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 선택한다"],
     ["6", "requests 시트에 직접 입력하거나 MergeFirewallRequestFolder 매크로로 폴더 안 신청서를 통합한다 (Alt+F8)"],
-    ["7", "AnalyzeRequestRoutes 매크로를 실행해 대상방화벽과 검증 상태를 계산한다"],
+    ["7", "라우팅 자동 탐색은 추후 기능이다. 현재 CLI 생성은 대상방화벽 입력값을 기준으로 한다"],
     ["8", "ConvertRequestsToSecuiBatch 매크로로 requests 결과를 secui_batch 장비별 배치 양식으로 변환한다"],
-    ["9", "vendor_cli_templates 시트에서 CLI 명령 템플릿을 검토하거나 수정한다"],
-    ["10", "ConvertRequestsToSecuiCli 매크로로 requests 결과를 secui_cli 장비별 CLI 명령 초안으로 변환한다"],
-    ["11", "secui_policy_export 시트에 SECUI export 정책을 붙여넣고 AnalyzeSecuiPolicyExport 매크로로 기존 정책 분석 결과를 만든다"],
-    ["12", "policy_summary 시트에서 기존 허용·차단·검토필요 건수를 먼저 확인한다"],
+    ["9", "필요하면 vendor_cli_templates의 command_template을 장비 CLI 형식에 맞게 수정한다"],
+    ["10", "ConvertRequestsToSecuiCli 매크로로 같은 장비·목적지·서비스 기준 룰별 그룹객체와 정책 CLI를 만든다"],
+    ["11", "ANY는 객체를 만들지 않고 정책에 직접 들어간다. 인터페이스는 숨김 firewall_ranges의 source_interface/destination_interface 기준이다"],
+    ["12", "기존 정책 검토가 필요하면 secui_policy_export에 export 정책을 붙여넣고 AnalyzeSecuiPolicyExport를 실행한다"],
+    ["13", "policy_summary 시트에서 기존 허용·차단·검토필요 건수를 먼저 확인한다"],
     ["⚠", "입력 시트(녹색·황색 탭)는 보호되어 있다. 헤더는 수정 불가, 데이터 입력 영역만 타이핑 가능"],
     ["ℹ", "requests·policy_analysis·policy_summary·processing_log(파랑·회색 탭)은 매크로가 자동으로 채운다. 직접 수정하지 않는다"],
     ["💡", "프로토콜·포트는 service_catalog 예시를 참고하고, 방향은 드롭다운에서 선택한다"],
@@ -160,6 +161,7 @@ EXAMPLE_REQUEST_ROWS: Final = [
         "제목": "웹서비스 연동",
         "원본파일": "example.xlsx",
         "원본행": 2,
+        "대상방화벽": "SECUI-FW-01",
         "출발지IP": "10.10.10.5",
         "출발지설명": "업무PC",
         "목적지IP": "10.20.20.5",
@@ -178,6 +180,7 @@ EXAMPLE_REQUEST_ROWS: Final = [
         "제목": "웹서비스 연동",
         "원본파일": "example.xlsx",
         "원본행": 3,
+        "대상방화벽": "SECUI-FW-01;SECUI-FW-02",
         "출발지IP": "10.10.10.0/24",
         "출발지설명": "업무PC대역",
         "목적지IP": "10.20.20.0/24",
@@ -200,7 +203,8 @@ WIDTHS: Final = {
         "V": 18, "W": 30, "X": 60, "Y": 24,
     },
     "firewalls": {"A": 16, "B": 10, "C": 9, "D": 28},
-    "firewall_ranges": {"A": 16, "B": 18, "C": 18, "D": 10, "E": 12, "F": 9, "G": 36},
+    "firewall_ranges": {"A": 16, "B": 18, "C": 18, "D": 10, "E": 12, "F": 9, "G": 36,
+                         "H": 18, "I": 20, "J": 16, "K": 18},
     "settings": {"A": 22, "B": 26, "C": 60},
     "header_aliases": {"A": 16, "B": 22, "C": 44},
     "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
@@ -220,9 +224,9 @@ WIDTHS: Final = {
     "policy_summary": {"A": 16, "B": 10, "C": 34, "D": 34},
     "vendor_cli_templates": {"A": 10, "B": 24, "C": 9, "D": 150, "E": 60},
     "service_catalog": {"A": 18, "B": 10, "C": 12, "D": 18, "E": 44},
-    "sample-request-format": {"A": 4, "B": 6, "C": 16, "D": 12, "E": 16,
-                              "F": 12, "G": 10, "H": 8, "I": 8, "J": 18,
-                              "K": 12, "L": 12, "M": 14},
+    "sample-request-format": {"A": 4, "B": 6, "C": 22, "D": 16, "E": 12, "F": 16,
+                              "G": 12, "H": 10, "I": 8, "J": 8, "K": 18,
+                              "L": 12, "M": 12, "N": 14},
     "usage": {"A": 8, "B": 76},
 }
 
@@ -249,6 +253,27 @@ TAB_COLORS: Final = {
     "service_catalog": "FFED7D31",
     "sample-request-format": "FFED7D31",
     "usage": "FFED7D31",
+}
+
+OPERATOR_VISIBLE_SHEETS: Final = {
+    "usage",
+    "requests",
+    "settings",
+    "firewalls",
+    "secui_policy_export",
+    "policy_summary",
+    "policy_analysis",
+    "secui_batch",
+    "secui_cli",
+    "vendor_cli_templates",
+}
+
+SUPPORT_DATA_SHEETS: Final = {
+    "header_aliases",
+    "firewall_ranges",
+    "processing_log",
+    "service_catalog",
+    "sample-request-format",
 }
 
 PROTECT_SHEETS: Final = {

@@ -105,16 +105,19 @@ jobs:
           아래 **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
 
           ## 사용 순서
-          1. `firewalls` : 방화벽 장비 목록
-          2. `firewall_ranges` : 출발지대역, 목적지대역, 방향, 순서
-          3. `service_catalog` : SECUI 서비스 표기 예시(tcp/443 등) 확인
+          1. `firewalls` : SECUI 장비명, 벤더, 사용여부
+          2. `requests` 또는 신청서 원본 `대상방화벽` : CLI 생성 대상 장비명 (`;`로 복수 입력)
+          3. `vendor_cli_templates` : SECUI 정책 생성 CLI 템플릿 확인/수정
           4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
           5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8). `request-folder/`(번들 zip)를 그대로 쓰거나 복사해서 사용하세요.
-          6. 방화벽 대역만 재분석: `AnalyzeRequestRoutes`
+          6. SECUI CLI 생성: `ConvertRequestsToSecuiCli`
 
           ## 주요 기능
-          - IP / CIDR 대역 / 다중주소 리스트 매칭
-          - 사용자가 정의한 `firewall_ranges` 순서대로 통과 방화벽 산정
+          - 라우팅 자동 탐색 없이 `대상방화벽` 입력값 기준 SECUI CLI 생성
+          - 같은 장비 + 같은 목적지 + 같은 서비스는 1개 룰로 그룹화
+          - 출발지/목적지/서비스 룰별 그룹 객체 생성 후 정책에서 참조
+          - `ANY`, `ALL`, `*`, `0.0.0.0/0`은 객체 생성 없이 정책 `ANY`로 출력
+          - 숨김 `firewall_ranges` 보조 컬럼의 source_interface/destination_interface를 CLI 템플릿에 반영
           - 세로 병합 셀 신청서 처리 (행 누락 없음)
           - 하위폴더 재귀 + 폴더명 파싱 (정보보호센터_1234 → 팀/문서번호)
           - 사용자 정의 헤더 별칭 (settings header_alias)

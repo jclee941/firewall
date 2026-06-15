@@ -34,7 +34,7 @@
 | 원본파일 | 자동 | 원본 파일명 |
 | 원본행 | 자동 | 원본 행 번호 |
 | 검증상태 | 자동 | `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, `DUPLICATE` |
-| 대상방화벽 | 자동 | 중복 제거된 방화벽 목록. `;` 구분. 값이 있으면 셀 배경색으로 강조 |
+| 대상방화벽 | 입력/자동 | CLI 생성 대상 SECUI 장비 목록. `;` 구분. 값이 있으면 셀 배경색으로 강조 |
 | 출발지IP | 입력 | IP, CIDR, 목록 |
 | 출발지설명 | 입력 | 출발지 이름 |
 | 목적지IP | 입력 | IP, CIDR, 목록 |
@@ -94,9 +94,13 @@
 
 ## SECUI sheets
 
-`secui_batch`와 `secui_cli`는 `requests.대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다.
+`secui_batch`와 `secui_cli`는 `requests.대상방화벽`을 장비별로 분리해 생성합니다. `firewalls.vendor`가 `SECUI`이고 사용 중인 장비만 포함합니다. 라우팅 자동 탐색은 추후 기능이며, 현재 CLI 생성은 사용자가 입력한 `대상방화벽`을 기준으로 합니다.
 
-`vendor_cli_templates`는 CLI 명령어를 엑셀 데이터로 관리합니다. `vendor=SECUI`, `enabled=Y`인 첫 번째 행의 `command_template`을 사용하며, `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}` 같은 placeholder를 신청서 값으로 치환합니다. `_q`가 붙은 placeholder는 CLI용 따옴표로 감싼 값입니다.
+`secui_cli`는 같은 장비, 같은 목적지 객체/주소, 같은 서비스인 신청을 한 정책으로 묶습니다. 출발지는 룰별 출발지 그룹 객체 멤버로 합치고, 목적지와 서비스도 룰별 그룹 객체를 만든 뒤 정책에서 세 그룹을 참조합니다. `ANY`, `ALL`, `*`, `0.0.0.0/0`은 그룹 객체를 만들지 않고 정책 값에 `ANY`를 직접 넣습니다.
+
+`firewall_ranges`의 `source_interface`, `destination_interface`, `source_zone`, `destination_zone`은 CLI 그룹명과 인터페이스 placeholder 산출에 쓰는 보조 기준입니다. 매칭되는 대역 정의가 없으면 `source_interface`/`destination_interface`는 `ANY`가 됩니다.
+
+`vendor_cli_templates`는 CLI 명령어를 엑셀 데이터로 관리합니다. `vendor=SECUI`, `enabled=Y`인 첫 번째 행의 `command_template`을 사용하며, `{policy_name_q}`, `{source_interface_q}`, `{destination_interface_q}`, `{source_object_q}`, `{destination_object_q}`, `{service_object_q}`, `{description_q}`, `{firewall_name}` 같은 placeholder를 신청서 값과 룰별 그룹 객체명으로 치환합니다. `_q`가 붙은 placeholder는 CLI용 따옴표로 감싼 값입니다.
 
 `service_catalog`는 SECUI CLI와 배치 출력에서 쓰는 서비스 표기 예시를 제공합니다. `secui_service`는 `프로토콜/포트` 조합을 보여 주는 참고값이며, 라우트 계산에는 사용하지 않습니다. 목록에 없는 포트는 `requests.포트`에 직접 입력합니다.
 

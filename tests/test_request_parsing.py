@@ -197,9 +197,9 @@ def test_parse_request_sheet_with_alias_only_ip_headers(tmp_path):
 
 def test_parse_canonical_layout(tmp_path, engine):
     rows = [
-        ["No", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
+        ["No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
          "방향", "용도", "시작일", "종료일", "비고"],
-        [1, "10.10.10.5", "업무PC", "172.16.1.10", "서버", "TCP", "443",
+        [1, "SECUI-FW-01", "10.10.10.5", "업무PC", "172.16.1.10", "서버", "TCP", "443",
          "OUT", "업무", "2026-01-01", "2026-12-31", "정기"],
     ]
     p = _build_xlsx(tmp_path, "req1.xlsx", rows)
@@ -207,6 +207,7 @@ def test_parse_canonical_layout(tmp_path, engine):
     assert len(parsed) == 1
     r = parsed[0]
     assert r["source_ip"] == "10.10.10.5"
+    assert r["target_firewalls"] == "SECUI-FW-01"
     assert r["dest_ip"] == "172.16.1.10"
     assert r["protocol"] == "TCP"
     res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])

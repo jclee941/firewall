@@ -5,10 +5,11 @@
 ## 첫 실행
 
 1. 통합 문서를 열고 매크로를 사용하도록 허용합니다.
-2. `firewalls`와 `firewall_ranges`를 먼저 채웁니다.
+2. `firewalls`에 SECUI 장비명, 벤더, 사용여부를 먼저 채웁니다.
 3. `settings.request_folder`에 신청서 폴더를 입력하거나 `SelectRequestFolder`로 선택합니다.
-4. 통합 문서를 다시 열면 `Workbook_Open`이 `MergeFirewallRequestFolder`를 실행해 신청서를 통합하고 방화벽 대역 분석까지 수행합니다.
-5. 자동 실행을 기다리지 않으려면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`를 수동 실행합니다.
+4. 신청서 원본 또는 `requests`의 `대상방화벽`에 SECUI 장비명을 입력합니다. 여러 장비는 `;`로 구분합니다.
+5. 통합 문서를 다시 열면 `Workbook_Open`이 `MergeFirewallRequestFolder`를 실행해 신청서를 통합합니다.
+6. 자동 실행을 기다리지 않으려면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`를 수동 실행합니다.
 
 ## 매크로
 
@@ -16,8 +17,8 @@
 | --- | --- |
 | `SetupFirewallAutomationWorkbook` | 운영 시트 생성/초기화 |
 | `SelectRequestFolder` | 신청서 폴더 선택 |
-| `MergeFirewallRequestFolder` | 신청서 폴더 통합 후 방화벽 대역 분석 |
-| `AnalyzeRequestRoutes` | 이미 통합된 `requests` 행 재분석 |
+| `MergeFirewallRequestFolder` | 신청서 폴더 통합 |
+| `AnalyzeRequestRoutes` | 추후 라우팅 검증용 수동 재분석 |
 | `AnalyzeSecuiPolicyExport` | SECUI export 기존 정책과 신청서 비교 분석 |
 | `ConvertRequestsToSecuiBatch` | SECUI 배치 양식 생성 |
 | `ConvertRequestsToSecuiCli` | SECUI CLI 초안 생성 |
@@ -59,7 +60,7 @@
 | 컬럼 | 의미 |
 | --- | --- |
 | `검증상태` | `OK`, `NO_MATCH`, `DIRECTION_MISMATCH` 등 |
-| `대상방화벽` | 중복 제거된 방화벽 목록. `;` 구분 |
+| `대상방화벽` | CLI 생성 대상 SECUI 장비 목록. `;` 구분 |
 | `방화벽경로` | 매칭 행 순서. `>` 구분 |
 | `출발매칭대역` | 첫 번째 매칭 정의의 출발지 대역 |
 | `목적매칭대역` | 첫 번째 매칭 정의의 목적지 대역 |
@@ -77,11 +78,13 @@
 
 ## SECUI
 
-SECUI 변환 매크로는 `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다. `대상방화벽`이 `SECUI-FW-01;SECUI-FW-02`이면 장비별로 행이 나뉩니다.
+SECUI 변환 매크로는 `대상방화벽`에 적힌 장비 중 `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다. `대상방화벽`이 `SECUI-FW-01;SECUI-FW-02`이면 장비별로 처리됩니다. 라우팅 자동 탐색은 현재 기본 흐름에서 사용하지 않습니다.
 
-`secui_cli`의 명령은 검토용 초안입니다. 장비 펌웨어별 옵션명이 다를 수 있으므로 실제 반영 전 CLI 도움말에서 확인해야 합니다.
+`secui_cli`는 같은 장비, 같은 목적지 객체/주소, 같은 서비스인 행을 한 룰로 묶습니다. 출발지는 룰별 출발지 그룹 객체에 멤버로 합치고, 목적지와 서비스도 룰별 그룹 객체를 만든 뒤 정책에서 참조합니다. 다른 목적지나 다른 서비스는 별도 룰로 분리합니다.
 
-CLI 명령 형식은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`에서 수정합니다. 기본 템플릿은 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}` placeholder를 사용합니다.
+`ANY`, `ALL`, `*`, `0.0.0.0/0`은 객체 생성 없이 정책에 `ANY`로 직접 들어갑니다. 이때 `firewall_ranges`의 `source_interface`, `destination_interface` 매칭값으로 인터페이스를 제한합니다. 대역 매칭이 없으면 인터페이스도 `ANY`로 표시되므로 반영 전 반드시 확인해야 합니다.
+
+CLI 명령 형식은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`에서 수정합니다. 기본 템플릿은 `{policy_name_q}`, `{source_interface_q}`, `{destination_interface_q}`, `{source_object_q}`, `{destination_object_q}`, `{service_object_q}`, `{description_q}`, `{firewall_name}` placeholder를 사용합니다.
 
 `service_catalog` 시트에서 SECUI 서비스 표기 예시(`tcp/443`, `udp/53`, `icmp/`)를 확인할 수 있습니다. 이 시트는 입력 편의용 참고표이며 `requests`의 포트 입력을 제한하지 않습니다.
 
