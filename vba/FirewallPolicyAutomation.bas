@@ -2111,9 +2111,6 @@ Private Sub FormatPolicyAnalysisSheet(ByVal worksheet As Worksheet)
     worksheet.Rows(1).Font.Bold = True
     worksheet.Range("A1:T1").AutoFilter
     worksheet.Range("K:T").EntireColumn.Hidden = True
-    worksheet.Activate
-    worksheet.Range("A2").Select
-    ActiveWindow.FreezePanes = True
 End Sub
 
 Private Sub FormatPolicySummarySheet(ByVal worksheet As Worksheet)
@@ -2124,9 +2121,6 @@ Private Sub FormatPolicySummarySheet(ByVal worksheet As Worksheet)
     Next c
     worksheet.Rows(1).Font.Bold = True
     worksheet.Range("A1:D7").AutoFilter
-    worksheet.Activate
-    worksheet.Range("A2").Select
-    ActiveWindow.FreezePanes = True
 End Sub
 
 Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
