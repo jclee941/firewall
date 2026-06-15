@@ -59,6 +59,31 @@ Private Const CLI_TEMPLATE_COL_NOTE As Long = 5
 
 Private mUserAliases As Object
 Private mParseSheetName As String
+Private mSuppressMessages As Boolean
+
+Public Sub AutoRunWorkbookOutputs()
+    Dim oldSuppress As Boolean
+    Dim settingsSheet As Worksheet
+
+    oldSuppress = mSuppressMessages
+    mSuppressMessages = True
+    On Error GoTo AutoRunFailed
+
+    Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
+    If FolderExists(SettingsValue(settingsSheet, "request_folder")) Then
+        MergeFirewallRequestFolder
+    End If
+    ConvertRequestsToSecuiBatch
+    ConvertRequestsToSecuiCli
+    AnalyzeSecuiPolicyExport
+
+    mSuppressMessages = oldSuppress
+    Exit Sub
+
+AutoRunFailed:
+    mSuppressMessages = oldSuppress
+    Err.Raise Err.Number, Err.Source, Err.Description
+End Sub
 
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
@@ -149,7 +174,7 @@ Public Sub AnalyzeSecuiPolicyExport()
     FormatPolicyAnalysisSheet analysisSheet
     WritePolicySummarySheet summarySheet
     FormatPolicySummarySheet summarySheet
-    MsgBox CStr(outputRow - 2) & "건의 SECUI 기존 정책 분석 결과를 만들었습니다.", vbInformation
+    ShowInfo CStr(outputRow - 2) & "건의 SECUI 기존 정책 분석 결과를 만들었습니다."
 End Sub
 
 Private Sub WritePolicyAnalysisRow(ByVal requestsSheet As Worksheet, ByVal exportSheet As Worksheet, ByVal analysisSheet As Worksheet, ByVal requestRow As Long, ByVal outputRow As Long)
@@ -386,9 +411,7 @@ Public Sub MergeFirewallRequestFolder()
     FormatRequestsSheet requestsSheet
     FormatLogSheet logSheet
 
-    MarkDuplicateRequests requestsSheet
-
-    MsgBox CStr(mergedCount) & "건의 신청서를 통합했습니다.", vbInformation
+    ShowInfo CStr(mergedCount) & "건의 신청서를 통합했습니다."
 End Sub
 
 Public Sub SelectRequestFolder()
@@ -453,7 +476,7 @@ Public Sub ConvertRequestsToSecuiBatch()
     Next requestRow
 
     FormatSecuiBatchSheet secuiBatchSheet
-    MsgBox CStr(convertedRows) & "건의 SECUI 배치 행을 생성했습니다.", vbInformation
+    ShowInfo CStr(convertedRows) & "건의 SECUI 배치 행을 생성했습니다."
 End Sub
 
 Public Sub ConvertRequestsToSecuiCli()
@@ -464,6 +487,7 @@ Public Sub ConvertRequestsToSecuiCli()
     Dim secuiFirewalls As Object
     Dim cliTemplate As Object
     Dim cliGroups As Object
+    Dim serviceFanoutIndex As Object
     Dim groupKey As Variant
     Dim requestRow As Long
     Dim cliRow As Long
@@ -484,8 +508,9 @@ Public Sub ConvertRequestsToSecuiCli()
     secuiCliSheet.Rows("2:" & secuiCliSheet.Rows.Count).Clear
 
     lastRow = requestsSheet.Cells(requestsSheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
+    Set serviceFanoutIndex = BuildSecuiCliServiceFanoutIndex(requestsSheet, secuiFirewalls, lastRow)
     For requestRow = REQ_DATA_START_ROW To lastRow
-        CollectSecuiCliRows requestsSheet, secuiFirewalls, requestRow, cliGroups
+        CollectSecuiCliRows requestsSheet, secuiFirewalls, serviceFanoutIndex, requestRow, cliGroups
     Next requestRow
 
     cliRow = 2
@@ -496,7 +521,7 @@ Public Sub ConvertRequestsToSecuiCli()
     Next groupKey
 
     FormatSecuiCliSheet secuiCliSheet
-    MsgBox CStr(convertedRows) & "건의 SECUI CLI 명령 초안을 생성했습니다.", vbInformation
+    ShowInfo CStr(convertedRows) & "건의 SECUI CLI 명령 초안을 생성했습니다."
 End Sub
 
 Private Function CopySecuiBatchRows(ByVal requestsSheet As Worksheet, ByVal secuiBatchSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal requestRow As Long, ByRef secuiRow As Long) As Long
@@ -537,32 +562,83 @@ Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiC
     CopySecuiCliRows = written
 End Function
 
-Private Sub CollectSecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal requestRow As Long, ByVal cliGroups As Object)
+Private Function BuildSecuiCliServiceFanoutIndex(ByVal requestsSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal lastRow As Long) As Object
+    Dim serviceFanoutIndex As Object
+    Dim services As Object
+    Dim requestRow As Long
     Dim targetFirewalls As Variant
     Dim firewallValue As Variant
     Dim firewallName As String
     Dim sourceObject As String
+    Dim sourceAddress As String
     Dim destinationObject As String
+    Dim destinationAddress As String
     Dim serviceObject As String
+    Dim sourceDestinationKey As String
+
+    Set serviceFanoutIndex = CreateObject("Scripting.Dictionary")
+    For requestRow = REQ_DATA_START_ROW To lastRow
+        sourceAddress = CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value)
+        destinationAddress = CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value)
+        sourceObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), sourceAddress)
+        destinationObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), destinationAddress)
+        serviceObject = SecuiCliServiceText(LCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value))), Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value)))
+
+        targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")
+        For Each firewallValue In targetFirewalls
+            firewallName = Trim$(CStr(firewallValue))
+            If Len(firewallName) > 0 And secuiFirewalls.Exists(SecuiFirewallKey(firewallName)) Then
+                sourceDestinationKey = SecuiCliSourceDestinationKey(firewallName, sourceObject, sourceAddress, destinationObject, destinationAddress)
+                If Not serviceFanoutIndex.Exists(sourceDestinationKey) Then
+                    Set services = CreateObject("Scripting.Dictionary")
+                    serviceFanoutIndex(sourceDestinationKey) = services
+                Else
+                    Set services = serviceFanoutIndex(sourceDestinationKey)
+                End If
+                services(CleanSecuiText(serviceObject)) = True
+            End If
+        Next firewallValue
+    Next requestRow
+    Set BuildSecuiCliServiceFanoutIndex = serviceFanoutIndex
+End Function
+
+Private Sub CollectSecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal serviceFanoutIndex As Object, ByVal requestRow As Long, ByVal cliGroups As Object)
+    Dim targetFirewalls As Variant
+    Dim firewallValue As Variant
+    Dim firewallName As String
+    Dim sourceObject As String
+    Dim sourceAddress As String
+    Dim destinationObject As String
+    Dim destinationAddress As String
+    Dim serviceObject As String
+    Dim sourceDestinationKey As String
     Dim groupKey As String
     Dim group As Object
 
-    sourceObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value))
-    destinationObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value))
+    sourceAddress = CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value)
+    destinationAddress = CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value)
+    sourceObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), sourceAddress)
+    destinationObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), destinationAddress)
     serviceObject = SecuiCliServiceText(LCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value))), Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value)))
 
     targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")
     For Each firewallValue In targetFirewalls
         firewallName = Trim$(CStr(firewallValue))
         If Len(firewallName) > 0 And secuiFirewalls.Exists(SecuiFirewallKey(firewallName)) Then
-            groupKey = SecuiCliGroupKey(firewallName, destinationObject, serviceObject)
+            sourceDestinationKey = SecuiCliSourceDestinationKey(firewallName, sourceObject, sourceAddress, destinationObject, destinationAddress)
+            If serviceFanoutIndex.Exists(sourceDestinationKey) And serviceFanoutIndex(sourceDestinationKey).Count > 1 Then
+                groupKey = "SRC_DST" & Chr$(30) & sourceDestinationKey
+            Else
+                groupKey = "DST_SVC" & Chr$(30) & SecuiCliDestinationServiceKey(firewallName, destinationObject, destinationAddress, serviceObject)
+            End If
             If Not cliGroups.Exists(groupKey) Then
                 Set group = NewSecuiCliGroup(requestsSheet, requestRow, firewallName, destinationObject, serviceObject)
                 cliGroups(groupKey) = group
             Else
                 Set group = cliGroups(groupKey)
             End If
-            AddSecuiCliGroupSource group, sourceObject, CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value), requestRow
+            AddSecuiCliGroupSource group, sourceObject, sourceAddress, requestRow
+            AddSecuiCliGroupService group, serviceObject
         End If
     Next firewallValue
 End Sub
@@ -590,6 +666,8 @@ Private Function NewSecuiCliGroup(ByVal requestsSheet As Worksheet, ByVal reques
     group("network_scope") = CStr(rangeInfo("network_scope"))
     Set group("sources") = CreateObject("Scripting.Dictionary")
     Set group("source_rows") = CreateObject("Scripting.Dictionary")
+    Set group("services") = CreateObject("Scripting.Dictionary")
+    AddSecuiCliGroupService group, serviceObject
     Set NewSecuiCliGroup = group
 End Function
 
@@ -606,9 +684,29 @@ Private Sub AddSecuiCliGroupSource(ByVal group As Object, ByVal sourceObject As 
     sourceRows(CStr(requestRow)) = True
 End Sub
 
-Private Function SecuiCliGroupKey(ByVal firewallName As String, ByVal destinationObject As String, ByVal serviceObject As String) As String
-    SecuiCliGroupKey = LCase$(CleanSecuiText(firewallName)) & Chr$(30) & _
+Private Sub AddSecuiCliGroupService(ByVal group As Object, ByVal serviceObject As String)
+    Dim services As Object
+    Dim cleanServiceObject As String
+
+    Set services = group("services")
+    cleanServiceObject = CleanSecuiText(serviceObject)
+    If Len(cleanServiceObject) = 0 Then Exit Sub
+    services(cleanServiceObject) = True
+    group("service_object") = JoinedDictionaryKeys(services, ";")
+End Sub
+
+Private Function SecuiCliSourceDestinationKey(ByVal firewallName As String, ByVal sourceObject As String, ByVal sourceAddress As String, ByVal destinationObject As String, ByVal destinationAddress As String) As String
+    SecuiCliSourceDestinationKey = LCase$(CleanSecuiText(firewallName)) & Chr$(30) & _
+        LCase$(CleanSecuiText(sourceObject)) & Chr$(30) & _
+        LCase$(CleanSecuiText(sourceAddress)) & Chr$(30) & _
         LCase$(CleanSecuiText(destinationObject)) & Chr$(30) & _
+        LCase$(CleanSecuiText(destinationAddress))
+End Function
+
+Private Function SecuiCliDestinationServiceKey(ByVal firewallName As String, ByVal destinationObject As String, ByVal destinationAddress As String, ByVal serviceObject As String) As String
+    SecuiCliDestinationServiceKey = LCase$(CleanSecuiText(firewallName)) & Chr$(30) & _
+        LCase$(CleanSecuiText(destinationObject)) & Chr$(30) & _
+        LCase$(CleanSecuiText(destinationAddress)) & Chr$(30) & _
         LCase$(CleanSecuiText(serviceObject))
 End Function
 
@@ -787,6 +885,7 @@ Private Function SecuiGroupPolicyName(ByVal requestsSheet As Worksheet, ByVal gr
     nameText = AppendToken(nameText, SecuiNetworkScopeToken(requestsSheet, group), "_")
     nameText = AppendToken(nameText, CStr(group("service_object")), "_")
     nameText = AppendToken(nameText, CStr(group("destination_object")), "_")
+    nameText = AppendToken(nameText, CStr(group("destination_address")), "_")
     SecuiGroupPolicyName = Left$(SecuiObjectNameToken(nameText), 120)
 End Function
 
@@ -1349,7 +1448,6 @@ Private Function CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow 
                 requestsSheet.Cells(targetRow, COL_END_DATE).Value = endDate
                 requestsSheet.Cells(targetRow, COL_NOTE).Value = note
                 requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
-                WriteRowValidation requestsSheet, targetRow
                 targetRow = targetRow + 1
                 written = written + 1
             Next k
@@ -1657,6 +1755,10 @@ Private Function SettingsValue(ByVal settingsSheet As Worksheet, ByVal key As St
         End If
     Next i
 End Function
+
+Private Sub ShowInfo(ByVal messageText As String)
+    If Not mSuppressMessages Then MsgBox messageText, vbInformation
+End Sub
 
 Private Sub ValidateRequiredHeaders(ByVal headerMap As Object, ByVal sourceFileName As String)
     Dim requiredHeaders As Variant

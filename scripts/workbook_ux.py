@@ -20,6 +20,7 @@ REQ_DIRECTION_COL = 14
 REQ_TARGET_COL = 7
 REQ_SRC_IP_COL = 8
 REQ_DST_IP_COL = 10
+REQ_HIDDEN_ROUTE_COLS = (6, 19, 20, 21, 22, 23, 24)
 REQ_HEADER_ROW = 2
 REQ_DATA_START_ROW = 3
 EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")
@@ -76,6 +77,8 @@ def apply_ux(wb) -> None:
             wb[name].sheet_properties.tabColor = color
 
     req = wb["requests"]
+    for column in REQ_HIDDEN_ROUTE_COLS:
+        req.column_dimensions[get_column_letter(column)].hidden = True
     add_list_validation(req, get_column_letter(REQ_PROTOCOL_COL), ["TCP", "UDP", "ICMP"], start_row=REQ_DATA_START_ROW)
     add_list_validation(req, get_column_letter(REQ_DIRECTION_COL), ["IN", "OUT", "BOTH"], start_row=REQ_DATA_START_ROW)
 

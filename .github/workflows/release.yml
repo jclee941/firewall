@@ -99,7 +99,7 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           NOTES_FILE="$(mktemp)"
           cat > "$NOTES_FILE" <<'EOF'
-          신청서 엑셀을 받아 **사용자가 정의한 방화벽 통과 대역 기준으로 대상방화벽** 을 자동 산정하는 Excel 네이티브(VBA) 도구입니다.
+          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI 배치/CLI를 생성하는 Excel 네이티브(VBA) 도구입니다.
 
           ## 다운로드 / 설치
           아래 **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
@@ -109,12 +109,15 @@ jobs:
           2. `requests` 또는 신청서 원본 `대상방화벽` : CLI 생성 대상 장비명 (`;`로 복수 입력)
           3. `vendor_cli_templates` : SECUI 정책 생성 CLI 템플릿 확인/수정
           4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
-          5. 신청서를 폴더에 모으고 → 매크로 `MergeFirewallRequestFolder` 실행 (Alt+F8). `request-folder/`(번들 zip)를 그대로 쓰거나 복사해서 사용하세요.
-          6. SECUI CLI 생성: `ConvertRequestsToSecuiCli`
+          5. 신청서를 폴더에 모은 뒤 통합 문서를 열면 `request_folder` 기준 신청서 통합과 `secui_batch`/`secui_cli` 생성이 자동 실행됩니다.
+          6. 수동 실행이 필요하면 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiBatch`, `ConvertRequestsToSecuiCli`를 실행하세요.
 
           ## 주요 기능
           - 라우팅 자동 탐색 없이 `대상방화벽` 입력값 기준 SECUI CLI 생성
-          - 같은 장비 + 같은 목적지 + 같은 서비스는 1개 룰로 그룹화
+          - 릴리즈 통합 문서의 `secui_cli`에 바로 확인 가능한 예시 CLI 포함
+          - 같은 장비 + 같은 목적지 + 같은 서비스는 출발지 그룹으로 묶음
+          - 같은 장비 + 같은 출발지 + 같은 목적지는 서비스/포트 그룹으로 묶음
+          - 출발지와 서비스가 동시에 다른 조합은 과허용 방지를 위해 분리
           - 출발지/목적지/서비스 룰별 그룹 객체 생성 후 정책에서 참조
           - `ANY`, `ALL`, `*`, `0.0.0.0/0`은 객체 생성 없이 정책 `ANY`로 출력
           - 숨김 `firewall_ranges` 보조 컬럼의 source_interface/destination_interface를 CLI 템플릿에 반영
@@ -139,6 +142,6 @@ jobs:
               "firewall-policy-automation-${TAG}-bundle.zip" \
               --repo "${{ github.repository }}" \
               --target "${{ github.sha }}" \
-              --title "$TAG — Firewall Range Analysis (대상방화벽 대역 분석)" \
+              --title "$TAG — SECUI CLI Generator" \
               --notes-file "$NOTES_FILE"
           fi

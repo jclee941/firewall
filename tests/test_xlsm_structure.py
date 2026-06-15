@@ -169,6 +169,8 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
         assert wb[sheet].sheet_state == "hidden", f"{sheet} must be hidden support data"
     assert wb.active is not None
     assert wb.active.title == "usage"
+    for column in ("F", "S", "T", "U", "V", "W", "X"):
+        assert wb["requests"].column_dimensions[column].hidden, f"requests {column} must be hidden in CLI workflow"
 
 
 def test_seed_data_present(xlsm_path):
@@ -189,6 +191,144 @@ def test_seed_data_present(xlsm_path):
     assert "{source_object_q}" in command_template
     assert "{destination_object_q}" in command_template
     assert "{service_object_q}" in command_template
+
+
+def test_built_workbook_ships_visible_secui_cli_examples(xlsm_path):
+    wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
+    cli = wb["secui_cli"]
+    assert cli.max_row >= 2, "release workbook must not ship an empty secui_cli sheet"
+    policy_names = [str(cli.cell(row, 3).value or "") for row in range(2, cli.max_row + 1)]
+    assert len(policy_names) == len(set(policy_names)), "seeded secui_cli policy names must be unique"
+
+    commands = "\n".join(str(cli.cell(row, 4).value or "") for row in range(2, cli.max_row + 1))
+    assert "fw set addrgrp" in commands
+    assert "fw set svcgrp" in commands
+    assert "fw set srule" in commands
+    assert "srcif" in commands
+    assert "dstif" in commands
+
+
+def test_secui_cli_seed_groups_same_destination_address_only(monkeypatch):
+    import importlib
+
+    seed = importlib.import_module("scripts.secui_cli_seed")
+
+    monkeypatch.setattr(seed, "FIREWALLS", [["firewall_name", "vendor", "enabled", "comment"], ["SECUI-FW-01", "SECUI", "Y", ""]])
+    monkeypatch.setattr(
+        seed,
+        "FIREWALL_RANGES",
+        [
+            [
+                "firewall_name", "source_cidr", "destination_cidr", "direction", "path_order",
+                "enabled", "comment", "source_interface", "destination_interface", "source_zone", "destination_zone",
+            ],
+            ["SECUI-FW-01", "ANY", "ANY", "OUT", 10, "Y", "", "inside", "server", "INTERNAL", "SERVER"],
+        ],
+    )
+    monkeypatch.setattr(
+        seed,
+        "VENDOR_CLI_TEMPLATES",
+        [
+            ["vendor", "template_name", "enabled", "command_template", "review_note"],
+            [
+                "SECUI",
+                "default",
+                "Y",
+                'fw set srule name {policy_name_q} src {source_object_q} dst {destination_object_q} service {service_object_q} srcif {source_interface_q} dstif {destination_interface_q}',
+                "",
+            ],
+        ],
+    )
+    base = {
+        "요청부서": "정보보호",
+        "요청번호": "REQ-1",
+        "원본파일": "req.xlsx",
+        "대상방화벽": "SECUI-FW-01",
+        "목적지설명": "APP",
+        "프로토콜": "TCP",
+        "포트": "443",
+        "방향": "OUT",
+        "용도": "HTTPS",
+        "비고": "",
+    }
+    monkeypatch.setattr(
+        seed,
+        "EXAMPLE_REQUEST_ROWS",
+        [
+            {**base, "원본행": 3, "출발지IP": "10.0.0.1", "출발지설명": "SRC-A", "목적지IP": "172.16.1.10"},
+            {**base, "원본행": 4, "출발지IP": "10.0.0.2", "출발지설명": "SRC-B", "목적지IP": "172.16.1.10"},
+            {**base, "원본행": 5, "출발지IP": "10.0.0.3", "출발지설명": "SRC-C", "목적지IP": "172.16.1.11"},
+        ],
+    )
+
+    rows = seed.secui_cli_seed_rows()
+
+    assert len(rows) == 3
+    assert {row[8] for row in rows[1:]} == {"3;4", "5"}
+    assert any("SRC-A;SRC-B" in row[3] for row in rows[1:])
+    assert any("172_16_1_10" in row[2] for row in rows[1:])
+    assert any("172_16_1_11" in row[2] for row in rows[1:])
+
+
+def test_secui_cli_seed_groups_ports_when_source_and_destination_match(monkeypatch):
+    import importlib
+
+    seed = importlib.import_module("scripts.secui_cli_seed")
+    monkeypatch.setattr(seed, "FIREWALLS", [["firewall_name", "vendor", "enabled", "comment"], ["SECUI-FW-01", "SECUI", "Y", ""]])
+    monkeypatch.setattr(
+        seed,
+        "FIREWALL_RANGES",
+        [
+            [
+                "firewall_name", "source_cidr", "destination_cidr", "direction", "path_order",
+                "enabled", "comment", "source_interface", "destination_interface", "source_zone", "destination_zone",
+            ],
+            ["SECUI-FW-01", "ANY", "ANY", "OUT", 10, "Y", "", "inside", "server", "INTERNAL", "SERVER"],
+        ],
+    )
+    monkeypatch.setattr(
+        seed,
+        "VENDOR_CLI_TEMPLATES",
+        [
+            ["vendor", "template_name", "enabled", "command_template", "review_note"],
+            [
+                "SECUI",
+                "default",
+                "Y",
+                'fw set srule name {policy_name_q} src {source_object_q} dst {destination_object_q} service {service_object_q}',
+                "",
+            ],
+        ],
+    )
+    base = {
+        "요청부서": "정보보호",
+        "요청번호": "REQ-2",
+        "원본파일": "req.xlsx",
+        "대상방화벽": "SECUI-FW-01",
+        "목적지설명": "APP",
+        "목적지IP": "172.16.1.10",
+        "프로토콜": "TCP",
+        "방향": "OUT",
+        "용도": "HTTPS",
+        "비고": "",
+    }
+    monkeypatch.setattr(
+        seed,
+        "EXAMPLE_REQUEST_ROWS",
+        [
+            {**base, "원본행": 3, "출발지IP": "10.0.0.1", "출발지설명": "SRC-A", "포트": "443"},
+            {**base, "원본행": 4, "출발지IP": "10.0.0.1", "출발지설명": "SRC-A", "포트": "8443"},
+            {**base, "원본행": 5, "출발지IP": "10.0.0.2", "출발지설명": "SRC-B", "포트": "443"},
+        ],
+    )
+
+    rows = seed.secui_cli_seed_rows()
+
+    assert len(rows) == 3
+    merged_service_rule = next(row for row in rows[1:] if row[8] == "3;4")
+    assert "tcp/443;tcp/8443" in merged_service_rule[3]
+    assert "SRC-A;SRC-B" not in merged_service_rule[3]
+    assert any(row[8] == "5" and "tcp/443" in row[3] for row in rows[1:])
 
 
 def _engine_from_xlsm(wb):
@@ -380,6 +520,9 @@ def test_secui_cli_template_oracle_preserves_multi_target_commands(xlsm_path):
     assert "For Each firewallValue In targetFirewalls" in src
     assert "WriteSecuiCliGroup requestsSheet, secuiCliSheet, cliGroups(groupKey), cliRow, cliTemplate" in src
     assert "cliRow = cliRow + 1" in src
+    assert "BuildSecuiCliServiceFanoutIndex" in src
+    assert "SecuiCliSourceDestinationKey" in src
+    assert "SecuiCliDestinationServiceKey" in src
     assert "SecuiGroupObjectCommands" in src
     assert "FirstMatchingFirewallRangeInfo" in src
     assert "SecuiPolicyObjectReference" in src
@@ -466,24 +609,14 @@ def test_route_macro_colors_target_firewall_cell():
     assert "targetCell.Interior.Color = RGB(217, 234, 211)" in src
 
 
-def test_merge_marks_duplicates_without_running_route_analysis():
+def test_merge_only_integrates_requests_without_validation_or_route_analysis():
     src = open(VBA_POLICY, encoding="utf-8").read()
     merge_start = src.find("Public Sub MergeFirewallRequestFolder()")
     merge_end = src.find("End Sub", merge_start)
     merge_src = src[merge_start:merge_end]
-    dup_pos = src.find("MarkDuplicateRequests requestsSheet")
     assert "AnalyzeRequestRoutes" not in merge_src
-    assert dup_pos != -1, "MarkDuplicateRequests call not found"
-
-
-def test_duplicate_highlight_preserves_validation_status_color():
-    src = open(VBA_POLICY, encoding="utf-8").read()
-    assert "HighlightDuplicateRow" in src, "missing color-preserving highlight helper"
-    helper_start = src.find("Private Sub HighlightDuplicateRow")
-    assert helper_start != -1
-    helper = src[helper_start:helper_start + 600]
-    assert "COL_VALIDATION_STATUS).Interior.Color = statusColor" in helper, \
-        "HighlightDuplicateRow must restore the route status-cell color"
+    assert "MarkDuplicateRequests requestsSheet" not in merge_src
+    assert "WriteRowValidation requestsSheet" not in merge_src
 
 
 # --------------------------------------------------------------------------- #
@@ -610,11 +743,25 @@ def test_workbook_open_does_not_swallow_errors():
     try:
         tw = g.get_module("ThisWorkbook")
         assert "Workbook_Open" in tw
-        assert "MergeFirewallRequestFolder" in tw
+        assert "AutoRunWorkbookOutputs" in tw
         assert "On Error Resume Next" not in tw, "must not blanket-swallow errors"
         assert "AutoRunErr" in tw, "must have an error handler that surfaces failures"
     finally:
         g.close()
+
+
+def test_auto_run_macro_refreshes_cli_outputs_without_folder_prompt():
+    src = open(VBA_POLICY, encoding="utf-8").read()
+    start = src.find("Public Sub AutoRunWorkbookOutputs()")
+    end = src.find("End Sub", start)
+    macro = src[start:end]
+    assert "FolderExists(SettingsValue(settingsSheet, \"request_folder\"))" in macro
+    assert "MergeFirewallRequestFolder" in macro
+    assert "ConvertRequestsToSecuiBatch" in macro
+    assert "ConvertRequestsToSecuiCli" in macro
+    assert "AnalyzeSecuiPolicyExport" in macro
+    assert "WriteSettings" not in macro
+    assert "RequestFolderPath" not in macro
 
 
 # --------------------------------------------------------------------------- #

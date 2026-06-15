@@ -41,7 +41,6 @@ from scripts.workbook_contract import (
     REQUESTS_HEADERS,
     SAMPLE_FORMAT,
     SECUI_BATCH_HEADERS,
-    SECUI_CLI_HEADERS,
     SECUI_POLICY_EXPORT,
     SERVICE_CATALOG,
     SETTINGS,
@@ -49,6 +48,7 @@ from scripts.workbook_contract import (
     VENDOR_CLI_TEMPLATES,
     WIDTHS,
 )
+from scripts.secui_cli_seed import secui_cli_seed_rows
 from scripts.workbook_ux import apply_ux
 
 VBA_DIR = ROOT / "vba"
@@ -106,12 +106,12 @@ def _write_rows(ws, rows):
 _AUTO_RUN_BODY = (
     "\r\n"
     "Private Sub Workbook_Open()\r\n"
-    "    ' Auto-run on open: integrate the request folder.\r\n"
+    "    ' Auto-run on open: integrate the request folder and refresh SECUI outputs.\r\n"
     "    On Error GoTo AutoRunErr\r\n"
-    "    Application.Run \"FirewallPolicyAutomation.MergeFirewallRequestFolder\"\r\n"
+    "    Application.Run \"FirewallPolicyAutomation.AutoRunWorkbookOutputs\"\r\n"
     "    Exit Sub\r\n"
     "AutoRunErr:\r\n"
-    "    MsgBox \"\uc790\ub3d9 \ud1b5\ud569 \uc2e4\ud589 \uc911 \uc624\ub958: \" & Err.Description, vbExclamation\r\n"
+    "    MsgBox \"\uc790\ub3d9 \ucd9c\ub825 \uc0dd\uc131 \uc911 \uc624\ub958: \" & Err.Description, vbExclamation\r\n"
     "End Sub\r\n"
 )
 
@@ -231,7 +231,7 @@ def main() -> int:
     add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)
     add("secui_batch", [SECUI_BATCH_HEADERS])
-    add("secui_cli", [SECUI_CLI_HEADERS])
+    add("secui_cli", secui_cli_seed_rows())
     add("secui_policy_export", SECUI_POLICY_EXPORT)
     add("policy_analysis", [POLICY_ANALYSIS_HEADERS, *POLICY_ANALYSIS_ROWS])
     add("policy_summary", [POLICY_SUMMARY_HEADERS, *POLICY_SUMMARY_ROWS])

@@ -22,12 +22,14 @@ How to use the workbook:
 3. Put SECUI device names in requests.대상방화벽 or in the source request files
    (use ; for multiple devices).
 4. Put request workbooks in a folder, set settings!B2 (request_folder),
-   then run macro MergeFirewallRequestFolder (Alt+F8).
-5. For SECUI output, run ConvertRequestsToSecuiBatch or
-   ConvertRequestsToSecuiCli and review secui_batch / secui_cli.
-6. ConvertRequestsToSecuiCli groups rows by firewall + destination + service:
-   sources become a per-rule source group, destination and service become
-   per-rule groups, and the policy references those groups.
+   then reopen the workbook. Workbook_Open merges requests and refreshes
+   secui_batch / secui_cli / policy_analysis automatically.
+5. To run manually, use MergeFirewallRequestFolder,
+   ConvertRequestsToSecuiBatch, and ConvertRequestsToSecuiCli (Alt+F8).
+6. ConvertRequestsToSecuiCli groups rows when the merge does not broaden
+   access: same firewall + destination + service merges sources, and same
+   firewall + source + destination merges services. Different source/service
+   combinations stay split to avoid over-permitting.
 7. ANY / ALL / * / 0.0.0.0/0 are emitted as policy ANY values without creating
    group objects. Interface tokens come from hidden firewall_ranges
    source_interface / destination_interface helper columns; unmatched ranges
@@ -39,6 +41,8 @@ SECUI service notes:
   examples such as tcp/443 and udp/53.
 - secui_policy_export / policy_analysis / policy_summary are optional existing
   policy review surfaces. CLI generation does not require a policy export.
+- requests validation/routing columns are hidden by default. They are for
+  manual route review later, not for the default SECUI CLI workflow.
 
 Macros are invoked via the Alt+F8 macro dialog. The workbook does not ship
 with on-sheet buttons; you may add your own and assign the macros if desired.
