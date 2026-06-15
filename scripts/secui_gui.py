@@ -23,7 +23,7 @@ def main() -> int:
     app = QApplication(sys.argv[:1])
     window = SecuiCliWindow()
     if args.smoke:
-        print(window.windowTitle())
+        print(f"SECUI_CLI_GUI_SMOKE_OK {len(window.windowTitle())}")
         return 0
     window.show()
     return app.exec()

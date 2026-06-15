@@ -93,7 +93,7 @@ def test_gui_script_smoke_creates_native_window() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "SECUI CLI 생성기" in result.stdout
+    assert "SECUI_CLI_GUI_SMOKE_OK" in result.stdout
 
 
 def test_gui_export_request_runs_without_python_subprocess(tmp_path: Path) -> None:
