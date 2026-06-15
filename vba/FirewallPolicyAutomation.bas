@@ -48,6 +48,9 @@ Private Const CLI_TEMPLATE_COL_VENDOR As Long = 1
 Private Const CLI_TEMPLATE_COL_ENABLED As Long = 3
 Private Const CLI_TEMPLATE_COL_COMMAND As Long = 4
 Private Const CLI_TEMPLATE_COL_NOTE As Long = 5
+Private Const SHEET_VISIBLE As Long = -1
+Private Const SHEET_HIDDEN As Long = 0
+Private Const FILE_DIALOG_FOLDER_PICKER As Long = 4
 
 Private mUserAliases As Object
 Private mParseSheetName As String
@@ -1738,21 +1741,21 @@ Private Function EnsureSheet(ByVal sheetName As String) As Worksheet
 End Function
 
 Private Sub ApplyOperatorSheetVisibility()
-    SetSheetVisibility REQUESTS_SHEET, xlSheetVisible
-    SetSheetVisibility SETTINGS_SHEET, xlSheetVisible
-    SetSheetVisibility FIREWALLS_SHEET, xlSheetVisible
-    SetSheetVisibility SECUI_CLI_SHEET, xlSheetVisible
-    SetSheetVisibility VENDOR_CLI_TEMPLATE_SHEET, xlSheetVisible
-    SetSheetVisibility FIREWALL_RANGE_SHEET, xlSheetVisible
+    SetSheetVisibility REQUESTS_SHEET, SHEET_VISIBLE
+    SetSheetVisibility SETTINGS_SHEET, SHEET_VISIBLE
+    SetSheetVisibility FIREWALLS_SHEET, SHEET_VISIBLE
+    SetSheetVisibility SECUI_CLI_SHEET, SHEET_VISIBLE
+    SetSheetVisibility VENDOR_CLI_TEMPLATE_SHEET, SHEET_VISIBLE
+    SetSheetVisibility FIREWALL_RANGE_SHEET, SHEET_VISIBLE
 
-    SetSheetVisibility "usage", xlSheetVisible
-    SetSheetVisibility "header_aliases", xlSheetHidden
-    SetSheetVisibility LOG_SHEET, xlSheetHidden
-    SetSheetVisibility SERVICE_CATALOG_SHEET, xlSheetHidden
-    SetSheetVisibility "sample-request-format", xlSheetHidden
+    SetSheetVisibility "usage", SHEET_VISIBLE
+    SetSheetVisibility "header_aliases", SHEET_HIDDEN
+    SetSheetVisibility LOG_SHEET, SHEET_HIDDEN
+    SetSheetVisibility SERVICE_CATALOG_SHEET, SHEET_HIDDEN
+    SetSheetVisibility "sample-request-format", SHEET_HIDDEN
 End Sub
 
-Private Sub SetSheetVisibility(ByVal sheetName As String, ByVal visibility As XlSheetVisibility)
+Private Sub SetSheetVisibility(ByVal sheetName As String, ByVal visibility As Long)
     On Error Resume Next
     ThisWorkbook.Worksheets(sheetName).Visible = visibility
     On Error GoTo 0
@@ -1894,7 +1897,7 @@ Private Function FolderExists(ByVal folderPath As String) As Boolean
 End Function
 
 Private Function PickFolder(Optional ByVal initialPath As String = "") As String
-    With Application.FileDialog(msoFileDialogFolderPicker)
+    With Application.FileDialog(FILE_DIALOG_FOLDER_PICKER)
         .Title = "방화벽 신청서 폴더 선택"
         If FolderExists(initialPath) Then .InitialFileName = initialPath & Application.PathSeparator
         If .Show <> -1 Then Exit Function

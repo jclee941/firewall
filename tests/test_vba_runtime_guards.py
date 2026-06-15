@@ -69,6 +69,15 @@ def test_runtime_vba_does_not_touch_excel_autofilter_state():
     assert ".ShowAllData" not in src
 
 
+def test_vba_avoids_office_enum_compile_dependencies():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    assert "XlSheetVisibility" not in src
+    assert "msoFileDialogFolderPicker" not in src
+    assert "FILE_DIALOG_FOLDER_PICKER" in src
+    assert "SHEET_VISIBLE" in src
+    assert "SHEET_HIDDEN" in src
+
+
 def test_secui_cli_vba_assigns_dictionary_objects_with_set():
     src = VBA_POLICY.read_text(encoding="utf-8")
     assert "Set serviceFanoutIndex(sourceDestinationKey) = services" in src
