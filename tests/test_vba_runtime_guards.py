@@ -78,6 +78,15 @@ def test_vba_avoids_office_enum_compile_dependencies():
     assert "SHEET_HIDDEN" in src
 
 
+def test_vba_procedure_declarations_are_not_single_long_byval_lines():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    long_declarations = [
+        line for line in src.splitlines()
+        if "ByVal" in line and (line.startswith("Private ") or line.startswith("Public ")) and len(line) > 140
+    ]
+    assert long_declarations == []
+
+
 def test_secui_cli_vba_assigns_dictionary_objects_with_set():
     src = VBA_POLICY.read_text(encoding="utf-8")
     assert "Set serviceFanoutIndex(sourceDestinationKey) = services" in src

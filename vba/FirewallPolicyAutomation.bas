@@ -230,7 +230,13 @@ Public Sub ConvertRequestsToSecuiCli()
     ShowInfo CStr(convertedRows) & "건의 SECUI CLI 명령 초안을 생성했습니다."
 End Sub
 
-Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal cliTemplate As Object, ByVal requestRow As Long, ByRef cliRow As Long) As Long
+Private Function CopySecuiCliRows( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal secuiCliSheet As Worksheet, _
+        ByVal secuiFirewalls As Object, _
+        ByVal cliTemplate As Object, _
+        ByVal requestRow As Long, _
+        ByRef cliRow As Long) As Long
     Dim targetFirewalls As Variant
     Dim firewallValue As Variant
     Dim firewallName As String
@@ -249,7 +255,10 @@ Private Function CopySecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiC
     CopySecuiCliRows = written
 End Function
 
-Private Function BuildSecuiCliServiceFanoutIndex(ByVal requestsSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal lastRow As Long) As Object
+Private Function BuildSecuiCliServiceFanoutIndex( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal secuiFirewalls As Object, _
+        ByVal lastRow As Long) As Object
     Dim serviceFanoutIndex As Object
     Dim services As Object
     Dim requestRow As Long
@@ -289,7 +298,12 @@ Private Function BuildSecuiCliServiceFanoutIndex(ByVal requestsSheet As Workshee
     Set BuildSecuiCliServiceFanoutIndex = serviceFanoutIndex
 End Function
 
-Private Sub CollectSecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiFirewalls As Object, ByVal serviceFanoutIndex As Object, ByVal requestRow As Long, ByVal cliGroups As Object)
+Private Sub CollectSecuiCliRows( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal secuiFirewalls As Object, _
+        ByVal serviceFanoutIndex As Object, _
+        ByVal requestRow As Long, _
+        ByVal cliGroups As Object)
     Dim targetFirewalls As Variant
     Dim firewallValue As Variant
     Dim firewallName As String
@@ -330,7 +344,12 @@ Private Sub CollectSecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiFir
     Next firewallValue
 End Sub
 
-Private Function NewSecuiCliGroup(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal firewallName As String, ByVal destinationObject As String, ByVal serviceObject As String) As Object
+Private Function NewSecuiCliGroup( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal requestRow As Long, _
+        ByVal firewallName As String, _
+        ByVal destinationObject As String, _
+        ByVal serviceObject As String) As Object
     Dim group As Object
     Set group = CreateObject("Scripting.Dictionary")
     group("firewall_name") = firewallName
@@ -358,7 +377,11 @@ Private Function NewSecuiCliGroup(ByVal requestsSheet As Worksheet, ByVal reques
     Set NewSecuiCliGroup = group
 End Function
 
-Private Sub AddSecuiCliGroupSource(ByVal group As Object, ByVal sourceObject As String, ByVal sourceAddress As String, ByVal requestRow As Long)
+Private Sub AddSecuiCliGroupSource( _
+        ByVal group As Object, _
+        ByVal sourceObject As String, _
+        ByVal sourceAddress As String, _
+        ByVal requestRow As Long)
     Dim sources As Object
     Dim sourceRows As Object
     Dim cleanSourceObject As String
@@ -382,7 +405,12 @@ Private Sub AddSecuiCliGroupService(ByVal group As Object, ByVal serviceObject A
     group("service_object") = JoinedDictionaryKeys(services, ";")
 End Sub
 
-Private Function SecuiCliSourceDestinationKey(ByVal firewallName As String, ByVal sourceObject As String, ByVal sourceAddress As String, ByVal destinationObject As String, ByVal destinationAddress As String) As String
+Private Function SecuiCliSourceDestinationKey( _
+        ByVal firewallName As String, _
+        ByVal sourceObject As String, _
+        ByVal sourceAddress As String, _
+        ByVal destinationObject As String, _
+        ByVal destinationAddress As String) As String
     SecuiCliSourceDestinationKey = LCase$(CleanSecuiText(firewallName)) & Chr$(30) & _
         LCase$(CleanSecuiText(sourceObject)) & Chr$(30) & _
         LCase$(CleanSecuiText(sourceAddress)) & Chr$(30) & _
@@ -390,7 +418,11 @@ Private Function SecuiCliSourceDestinationKey(ByVal firewallName As String, ByVa
         LCase$(CleanSecuiText(destinationAddress))
 End Function
 
-Private Function SecuiCliDestinationServiceKey(ByVal firewallName As String, ByVal destinationObject As String, ByVal destinationAddress As String, ByVal serviceObject As String) As String
+Private Function SecuiCliDestinationServiceKey( _
+        ByVal firewallName As String, _
+        ByVal destinationObject As String, _
+        ByVal destinationAddress As String, _
+        ByVal serviceObject As String) As String
     SecuiCliDestinationServiceKey = LCase$(CleanSecuiText(firewallName)) & Chr$(30) & _
         LCase$(CleanSecuiText(destinationObject)) & Chr$(30) & _
         LCase$(CleanSecuiText(destinationAddress)) & Chr$(30) & _
@@ -456,7 +488,13 @@ Private Function LoadVendorCliTemplate(ByVal templateSheet As Worksheet, ByVal v
     Set LoadVendorCliTemplate = result
 End Function
 
-Private Sub WriteSecuiCliRow(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal requestRow As Long, ByVal cliRow As Long, ByVal firewallName As String, ByVal cliTemplate As Object)
+Private Sub WriteSecuiCliRow( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal secuiCliSheet As Worksheet, _
+        ByVal requestRow As Long, _
+        ByVal cliRow As Long, _
+        ByVal firewallName As String, _
+        ByVal cliTemplate As Object)
     Dim policyName As String
     Dim reviewNote As String
     policyName = SecuiPolicyName(requestsSheet, requestRow, firewallName)
@@ -474,7 +512,12 @@ Private Sub WriteSecuiCliRow(ByVal requestsSheet As Worksheet, ByVal secuiCliShe
     secuiCliSheet.Cells(cliRow, 9).Value = requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value
 End Sub
 
-Private Sub WriteSecuiCliGroup(ByVal requestsSheet As Worksheet, ByVal secuiCliSheet As Worksheet, ByVal group As Object, ByVal cliRow As Long, ByVal cliTemplate As Object)
+Private Sub WriteSecuiCliGroup( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal secuiCliSheet As Worksheet, _
+        ByVal group As Object, _
+        ByVal cliRow As Long, _
+        ByVal cliTemplate As Object)
     Dim requestRow As Long
     Dim firewallName As String
     Dim policyName As String
@@ -544,13 +587,21 @@ Private Function SecuiGroupPolicyName(ByVal requestsSheet As Worksheet, ByVal gr
     SecuiGroupPolicyName = Left$(SecuiObjectNameToken(nameText), 120)
 End Function
 
-Private Function SecuiGroupObjectName(ByVal prefixText As String, ByVal policyName As String, ByVal requestsSheet As Worksheet, ByVal group As Object) As String
+Private Function SecuiGroupObjectName( _
+        ByVal prefixText As String, _
+        ByVal policyName As String, _
+        ByVal requestsSheet As Worksheet, _
+        ByVal group As Object) As String
     Dim objectName As String
     objectName = "GRP_" & prefixText & "_" & SecuiNetworkScopeToken(requestsSheet, group) & "_" & policyName
     SecuiGroupObjectName = Left$(SecuiObjectNameToken(objectName), 120)
 End Function
 
-Private Function SecuiGroupObjectCommands(ByVal group As Object, ByVal sourceGroupName As String, ByVal destinationGroupName As String, ByVal serviceGroupName As String) As String
+Private Function SecuiGroupObjectCommands( _
+        ByVal group As Object, _
+        ByVal sourceGroupName As String, _
+        ByVal destinationGroupName As String, _
+        ByVal serviceGroupName As String) As String
     Dim commandText As String
     If Not IsAnyPolicyValue(JoinedDictionaryKeys(group("sources"), ";")) Then
         commandText = AppendCliLine(commandText, "fw set addrgrp name " & SecuiCliQuote(sourceGroupName) & " member " & SecuiCliQuote(JoinedDictionaryKeys(group("sources"), ";")) & " # device=" & CStr(group("firewall_name")))
@@ -603,7 +654,11 @@ Private Function SecuiNetworkScopeToken(ByVal requestsSheet As Worksheet, ByVal 
     End If
 End Function
 
-Private Function FirstMatchingFirewallRangeInfo(ByVal firewallName As String, ByVal sourceText As String, ByVal destinationText As String, ByVal directionText As String) As Object
+Private Function FirstMatchingFirewallRangeInfo( _
+        ByVal firewallName As String, _
+        ByVal sourceText As String, _
+        ByVal destinationText As String, _
+        ByVal directionText As String) As Object
     Dim info As Object
     Dim rangeSheet As Worksheet
     Dim lastRow As Long
@@ -761,7 +816,12 @@ Private Function AppendCliLine(ByVal baseText As String, ByVal lineText As Strin
     End If
 End Function
 
-Private Function SecuiCliCommand(ByVal requestsSheet As Worksheet, ByVal requestRow As Long, ByVal firewallName As String, ByVal policyName As String, ByVal commandTemplate As String) As String
+Private Function SecuiCliCommand( _
+        ByVal requestsSheet As Worksheet, _
+        ByVal requestRow As Long, _
+        ByVal firewallName As String, _
+        ByVal policyName As String, _
+        ByVal commandTemplate As String) As String
     Dim proto As String
     Dim portText As String
 
@@ -794,7 +854,30 @@ Private Function SecuiCliCommand(ByVal requestsSheet As Worksheet, ByVal request
         CStr(requestsSheet.Cells(requestRow, COL_NOTE).Value))
 End Function
 
-Private Function RenderVendorCliTemplate(ByVal commandTemplate As String, ByVal firewallName As String, ByVal policyName As String, ByVal sourceIp As String, ByVal sourceName As String, ByVal sourceObject As String, ByVal destinationIp As String, ByVal destinationName As String, ByVal destinationObject As String, ByVal protocolText As String, ByVal portText As String, ByVal serviceText As String, ByVal sourceInterface As String, ByVal destinationInterface As String, ByVal descriptionText As String, ByVal requestTeam As String, ByVal requestDocNo As String, ByVal sourceFile As String, ByVal sourceRow As String, ByVal startDate As String, ByVal endDate As String, ByVal purposeText As String, ByVal noteText As String) As String
+Private Function RenderVendorCliTemplate( _
+        ByVal commandTemplate As String, _
+        ByVal firewallName As String, _
+        ByVal policyName As String, _
+        ByVal sourceIp As String, _
+        ByVal sourceName As String, _
+        ByVal sourceObject As String, _
+        ByVal destinationIp As String, _
+        ByVal destinationName As String, _
+        ByVal destinationObject As String, _
+        ByVal protocolText As String, _
+        ByVal portText As String, _
+        ByVal serviceText As String, _
+        ByVal sourceInterface As String, _
+        ByVal destinationInterface As String, _
+        ByVal descriptionText As String, _
+        ByVal requestTeam As String, _
+        ByVal requestDocNo As String, _
+        ByVal sourceFile As String, _
+        ByVal sourceRow As String, _
+        ByVal startDate As String, _
+        ByVal endDate As String, _
+        ByVal purposeText As String, _
+        ByVal noteText As String) As String
     Dim rendered As String
     rendered = commandTemplate
     If Len(Trim$(rendered)) = 0 Then rendered = DefaultVendorCliTemplate()
@@ -908,7 +991,12 @@ Private Function CleanSecuiText(ByVal value As String) As String
     CleanSecuiText = s
 End Function
 
-Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function MergeFolderFiles( _
+        ByVal folderPath As String, _
+        ByVal requestsSheet As Worksheet, _
+        ByVal firewallsSheet As Worksheet, _
+        ByVal logSheet As Worksheet, _
+        ByRef nextRow As Long) As Long
     ' Recurse subfolders so each team folder (e.g. 정보보호센터_1234) is scanned.
     Dim mergedCount As Long
     Dim folderName As String
@@ -917,7 +1005,13 @@ Private Function MergeFolderFiles(ByVal folderPath As String, ByVal requestsShee
     MergeFolderFiles = mergedCount
 End Function
 
-Private Function MergeFolderTree(ByVal folderPath As String, ByVal folderName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function MergeFolderTree( _
+        ByVal folderPath As String, _
+        ByVal folderName As String, _
+        ByVal requestsSheet As Worksheet, _
+        ByVal firewallsSheet As Worksheet, _
+        ByVal logSheet As Worksheet, _
+        ByRef nextRow As Long) As Long
     Dim fileName As String
     Dim mergedCount As Long
     Dim subFolders As Collection
@@ -1014,7 +1108,14 @@ Private Sub ParseRequestFolderName(ByVal folderName As String, ByRef team As Str
     title = Trim$(Mid$(rest, second + 1))
 End Sub
 
-Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileName As String, ByVal folderName As String, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByVal logSheet As Worksheet, ByRef nextRow As Long) As Long
+Private Function MergeWorkbookFile( _
+        ByVal filePath As String, _
+        ByVal sourceFileName As String, _
+        ByVal folderName As String, _
+        ByVal requestsSheet As Worksheet, _
+        ByVal firewallsSheet As Worksheet, _
+        ByVal logSheet As Worksheet, _
+        ByRef nextRow As Long) As Long
     Dim sourceBook As Workbook
     Dim sourceSheet As Worksheet
     Dim headerMap As Object
@@ -1057,7 +1158,15 @@ OpenFailed:
     MergeWorkbookFile = 0
 End Function
 
-Private Function CopyRequestRow(ByVal sourceSheet As Worksheet, ByVal sourceRow As Long, ByVal headerMap As Object, ByVal requestsSheet As Worksheet, ByVal firewallsSheet As Worksheet, ByRef targetRow As Long, ByVal sourceFileName As String, ByVal folderName As String) As Long
+Private Function CopyRequestRow( _
+        ByVal sourceSheet As Worksheet, _
+        ByVal sourceRow As Long, _
+        ByVal headerMap As Object, _
+        ByVal requestsSheet As Worksheet, _
+        ByVal firewallsSheet As Worksheet, _
+        ByRef targetRow As Long, _
+        ByVal sourceFileName As String, _
+        ByVal folderName As String) As Long
     ' Explode one source request into the full 출발지IP × 목적지IP × 포트 product:
     ' one firewall rule per output row. Mirrors request_parser_oracle.explode_request_row.
     Dim srcs() As String, dsts() As String, ports() As String
@@ -1605,7 +1714,11 @@ Private Sub WriteRowValidation(ByVal worksheet As Worksheet, ByVal rowIndex As L
     End If
 End Sub
 
-Private Sub AppendValidationMessage(ByVal worksheet As Worksheet, ByVal rowIndex As Long, ByVal statusText As String, ByVal messageText As String)
+Private Sub AppendValidationMessage( _
+        ByVal worksheet As Worksheet, _
+        ByVal rowIndex As Long, _
+        ByVal statusText As String, _
+        ByVal messageText As String)
     Dim currentStatus As String
     Dim currentMessage As String
 
@@ -1666,7 +1779,12 @@ Private Sub WriteServiceCatalogHeaders(ByVal worksheet As Worksheet)
     End If
 End Sub
 
-Private Sub AppendProcessingLog(ByVal worksheet As Worksheet, ByVal sourceFileName As String, ByVal statusText As String, ByVal mergedRows As Long, ByVal messageText As String)
+Private Sub AppendProcessingLog( _
+        ByVal worksheet As Worksheet, _
+        ByVal sourceFileName As String, _
+        ByVal statusText As String, _
+        ByVal mergedRows As Long, _
+        ByVal messageText As String)
     Dim nextRow As Long
 
     nextRow = worksheet.Cells(worksheet.Rows.Count, 1).End(xlUp).Row + 1
