@@ -102,7 +102,7 @@ _AUTO_RUN_BODY = (
     "Private Sub Workbook_Open()\r\n"
     "    ' Auto-run on open: integrate the request folder and refresh SECUI outputs.\r\n"
     "    On Error GoTo AutoRunErr\r\n"
-    "    Application.Run \"FirewallPolicyAutomation.AutoRunWorkbookOutputs\"\r\n"
+    "    AutoRunWorkbookOutputs\r\n"
     "    Exit Sub\r\n"
     "AutoRunErr:\r\n"
     "    MsgBox \"\uc790\ub3d9 \ucd9c\ub825 \uc0dd\uc131 \uc911 \uc624\ub958: \" & Err.Description, vbExclamation\r\n"

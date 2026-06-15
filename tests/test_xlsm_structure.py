@@ -729,6 +729,7 @@ def test_workbook_open_does_not_swallow_errors():
         tw = g.get_module("ThisWorkbook")
         assert "Workbook_Open" in tw
         assert "AutoRunWorkbookOutputs" in tw
+        assert "Application.Run" not in tw, "direct call avoids Windows macro name-resolution failures"
         assert "On Error Resume Next" not in tw, "must not blanket-swallow errors"
         assert "AutoRunErr" in tw, "must have an error handler that surfaces failures"
     finally:
