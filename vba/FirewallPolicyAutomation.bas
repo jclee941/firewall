@@ -168,9 +168,9 @@ Public Sub CreateSampleRequestWorkbook()
     sampleSheet.Name = "firewall_requests"
     sampleSheet.Range("B1:N1").Value = Array("No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고")
     sampleSheet.Range("B2:N2").Value = Array(1, "SECUI-FW-01", "10.10.10.0/24", "업무PC", "172.16.1.10", "업무시스템", "TCP", "443", "IN", "HTTPS 업무 연동", "2026-01-01", "2026-12-31", "정기 신청")
-    sampleSheet.Columns("A:N").AutoFit
+    SafeAutoFitColumns sampleSheet, "A:N"
     sampleSheet.Rows(1).Font.Bold = True
-    sampleSheet.Range("B1:N1").AutoFilter
+    SafeApplyAutoFilter sampleSheet, "B1:N1"
 
     outputPath = Application.GetSaveAsFilename(InitialFileName:="firewall-request-template.xlsx", FileFilter:="Excel Workbook (*.xlsx), *.xlsx")
     If outputPath = False Then
@@ -1051,7 +1051,7 @@ Private Function MergeWorkbookFile(ByVal filePath As String, ByVal sourceFileNam
 OpenFailed:
     If Not sourceBook Is Nothing Then sourceBook.Close SaveChanges:=False
     AppendProcessingLog logSheet, sourceFileName, "ERROR", 0, Err.Description
-    MsgBox "파일을 처리할 수 없습니다: " & filePath & vbCrLf & Err.Description, vbExclamation
+    If Not mSuppressMessages Then MsgBox "파일을 처리할 수 없습니다: " & filePath & vbCrLf & Err.Description, vbExclamation
     MergeWorkbookFile = 0
 End Function
 
@@ -1290,7 +1290,7 @@ Private Function SelectRequestSheet(ByVal sourceBook As Workbook, ByVal parseShe
             Exit Function
         End If
     Next ws
-    Err.Raise vbObjectError + 1004, , "파싱 대상 시트를 찾을 수 없습니다: " & parseSheetName
+    Err.Raise vbObjectError + 1005, , "파싱 대상 시트를 찾을 수 없습니다: " & parseSheetName
 End Function
 
 Private Function BuildHeaderMap(ByVal worksheet As Worksheet, ByVal headerRow As Long) As Object
@@ -1676,9 +1676,9 @@ Private Sub AppendProcessingLog(ByVal worksheet As Worksheet, ByVal sourceFileNa
 End Sub
 
 Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:E").AutoFit
+    SafeAutoFitColumns worksheet, "A:E"
     worksheet.Rows(1).Font.Bold = True
-    worksheet.Range("A1:E1").AutoFilter
+    SafeApplyAutoFilter worksheet, "A1:E1"
 End Sub
 
 Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
@@ -1688,7 +1688,7 @@ Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
         worksheet.Columns(c).ColumnWidth = widths(c - 1)
     Next c
     worksheet.Rows(1).Font.Bold = True
-    worksheet.Range("A1:I1").AutoFilter
+    SafeApplyAutoFilter worksheet, "A1:I1"
 End Sub
 
 Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
@@ -1748,7 +1748,6 @@ Private Sub ApplyOperatorSheetVisibility()
     SetSheetVisibility VENDOR_CLI_TEMPLATE_SHEET, xlSheetVisible
     SetSheetVisibility FIREWALL_RANGE_SHEET, xlSheetVisible
 
-    ThisWorkbook.Worksheets(REQUESTS_SHEET).Activate
     SetSheetVisibility "usage", xlSheetVisible
     SetSheetVisibility "header_aliases", xlSheetHidden
     SetSheetVisibility LOG_SHEET, xlSheetHidden
@@ -1816,7 +1815,7 @@ Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
     Next c
     worksheet.Rows(REQ_HEADER_GROUP_ROW).Font.Bold = True
     worksheet.Rows(REQ_HEADER_ROW).Font.Bold = True
-    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).AutoFilter
+    SafeApplyAutoFilter worksheet, "A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW
 End Sub
 
 Private Function HeaderKey(ByVal headerText As String) As String
@@ -1848,7 +1847,7 @@ Private Function HeaderKey(ByVal headerText As String) As String
 End Function
 
 Private Sub FormatFirewallsSheet(ByVal worksheet As Worksheet)
-    worksheet.Columns("A:D").AutoFit
+    SafeAutoFitColumns worksheet, "A:D"
     worksheet.Rows(1).Font.Bold = True
 End Sub
 
@@ -1866,9 +1865,24 @@ Private Sub WriteFirewallRangeHeaders(ByVal worksheet As Worksheet)
 End Sub
 
 Private Sub FormatGenericSheet(ByVal worksheet As Worksheet, ByVal cols As String)
-    worksheet.Columns(cols).AutoFit
+    SafeAutoFitColumns worksheet, cols
     worksheet.Rows(1).Font.Bold = True
-    worksheet.Range(Replace(cols, ":", "1:") & "1").AutoFilter
+    SafeApplyAutoFilter worksheet, Replace(cols, ":", "1:") & "1"
+End Sub
+
+Private Sub SafeAutoFitColumns(ByVal worksheet As Worksheet, ByVal cols As String)
+    On Error Resume Next
+    worksheet.Columns(cols).AutoFit
+    On Error GoTo 0
+End Sub
+
+Private Sub SafeApplyAutoFilter(ByVal worksheet As Worksheet, ByVal rangeAddress As String)
+    On Error Resume Next
+    If worksheet.FilterMode Then worksheet.ShowAllData
+    If worksheet.AutoFilterMode Then worksheet.AutoFilterMode = False
+    Err.Clear
+    worksheet.Range(rangeAddress).AutoFilter
+    On Error GoTo 0
 End Sub
 
 Private Function RequestFolderPath(ByVal settingsSheet As Worksheet) As String

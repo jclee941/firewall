@@ -26,10 +26,16 @@ def _macro_body(src: str, name: str) -> str:
     start = src.find(f"Private Sub {name}(")
     if start == -1:
         start = src.find(f"Public Sub {name}(")
+    if start == -1:
+        start = src.find(f"Private Function {name}(")
+    if start == -1:
+        start = src.find(f"Public Function {name}(")
     assert start != -1, f"{name} not found"
-    end = src.find("End Sub", start)
-    assert end != -1, f"{name} End Sub not found"
-    return src[start:end]
+    end_sub = src.find("End Sub", start)
+    end_function = src.find("End Function", start)
+    candidates = [pos for pos in (end_sub, end_function) if pos != -1]
+    assert candidates, f"{name} end marker not found"
+    return src[start:min(candidates)]
 
 
 def test_auto_run_vba_does_not_select_or_freeze_active_window():
@@ -37,8 +43,22 @@ def test_auto_run_vba_does_not_select_or_freeze_active_window():
     for name in ("AutoRunWorkbookOutputs", "ConvertRequestsToSecuiCli", "FormatSecuiCliSheet"):
         body = _macro_body(src, name)
         assert ".Activate" not in body
-        assert ".Select" not in body
+        assert not re.search(r"\.Select\b", body)
         assert "ActiveWindow" not in body
+    assert ".Activate" not in src
+    assert not re.search(r"\.Select\b", src)
+    assert "ActiveWindow" not in src
+
+
+def test_vba_does_not_raise_user_errors_as_excel_1004():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    assert "vbObjectError + 1004" not in src
+
+
+def test_auto_run_suppresses_per_file_error_dialogs():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    body = _macro_body(src, "MergeWorkbookFile")
+    assert "If Not mSuppressMessages Then MsgBox" in body
 
 
 def test_secui_cli_vba_assigns_dictionary_objects_with_set():
