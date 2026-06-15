@@ -34,6 +34,7 @@ CLI_TEMPLATE_HEADER_COMMENTS = {
     "E": "secui_cli 검토메모 컬럼에 복사될 안내 문구입니다.",
 }
 USAGE_LINKS = (
+    ("주간보고", "업무개선 진행 내용"),
     ("requests", "신청 통합/분석 결과"),
     ("firewalls", "방화벽 장비 목록"),
     ("firewall_ranges", "출발지/목적지 대역과 인터페이스 설정"),

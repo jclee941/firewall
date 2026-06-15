@@ -99,6 +99,15 @@ USAGE: Final = [
     ["💡", "프로토콜·포트는 service_catalog 예시를 참고하고, 방향은 드롭다운에서 선택한다"],
 ]
 
+WEEKLY_REPORT: Final = [
+    ["항목", "내용"],
+    ["업무개선", "방화벽 정책 요청서 취합 및 대상방화벽 산출 자동화 도구 개발 진행"],
+    ["진행내용", "수작업으로 취합하던 방화벽 정책 요청서를 Excel 기반으로 자동 병합하는 기능 개발"],
+    ["진행내용", "출발지/목적지 대역 기준으로 대상방화벽을 자동 산출하는 로직 구현"],
+    ["진행내용", "SECUI 정책 생성 및 검증 기능을 추가하여 정책 작성 반복 작업을 줄이는 방향으로 개선 중"],
+    ["진행내용", "테스트 중 확인된 매크로 런타임 오류를 수정하며 Windows Excel 환경 기준으로 안정화 진행"],
+]
+
 EXAMPLE_REQUEST_ROWS: Final = [
     {
         "요청부서": "정보보호센터",
@@ -161,6 +170,7 @@ WIDTHS: Final = {
                               "G": 12, "H": 10, "I": 8, "J": 8, "K": 18,
                               "L": 12, "M": 12, "N": 14},
     "usage": {"A": 8, "B": 76},
+    "주간보고": {"A": 14, "B": 96},
 }
 
 FILTER_SHEETS: Final = {
@@ -181,10 +191,12 @@ TAB_COLORS: Final = {
     "service_catalog": "FFED7D31",
     "sample-request-format": "FFED7D31",
     "usage": "FFED7D31",
+    "주간보고": "FFED7D31",
 }
 
 OPERATOR_VISIBLE_SHEETS: Final = {
     "usage",
+    "주간보고",
     "requests",
     "settings",
     "firewalls",

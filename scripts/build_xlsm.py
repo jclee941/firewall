@@ -40,6 +40,7 @@ from scripts.workbook_contract import (
     SETTINGS,
     USAGE,
     VENDOR_CLI_TEMPLATES,
+    WEEKLY_REPORT,
     WIDTHS,
 )
 from scripts.secui_cli_seed import secui_cli_seed_rows
@@ -232,6 +233,7 @@ def main() -> int:
     _write_rows(sf, SAMPLE_FORMAT)
     _style_sheet(sf)
     add("usage", USAGE)
+    add("주간보고", WEEKLY_REPORT)
 
     # build-time UX (input-assist / display only; after all sheets are seeded)
     apply_ux(wb)

@@ -32,6 +32,7 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
         active_title = active.title
         usage = wb["usage"]
         targets = {
+            "주간보고",
             "requests",
             "firewalls",
             "firewall_ranges",

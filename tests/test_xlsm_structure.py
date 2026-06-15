@@ -77,7 +77,7 @@ def test_sheets_and_headers(xlsm_path):
     expected_sheets = {
         "requests", "firewalls", "firewall_ranges",
         "settings", "header_aliases", "processing_log", "sample-request-format", "usage",
-        "secui_cli", "vendor_cli_templates", "service_catalog",
+        "주간보고", "secui_cli", "vendor_cli_templates", "service_catalog",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -133,6 +133,7 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
 
     visible_sheets = {
         "usage",
+        "주간보고",
         "requests",
         "settings",
         "firewalls",
