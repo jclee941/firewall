@@ -95,6 +95,13 @@ def test_secui_cli_vba_assigns_dictionary_objects_with_set():
     assert not re.search(r"^\s*cliGroups\(groupKey\)\s*=\s*group\s*$", src, re.MULTILINE)
 
 
+def test_secui_cli_vba_defines_any_policy_value_helper():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    assert "Private Function IsAnyPolicyValue(" in src
+    for token in ('"ANY"', '"ALL"', '"*"', '"0.0.0.0/0"'):
+        assert token in src
+
+
 def test_auto_run_output_sheets_are_not_protected():
     _build_workbook()
     wb = openpyxl.load_workbook(XLSM, keep_vba=True)

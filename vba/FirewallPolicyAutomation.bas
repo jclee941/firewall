@@ -991,6 +991,16 @@ Private Function CleanSecuiText(ByVal value As String) As String
     CleanSecuiText = s
 End Function
 
+Private Function IsAnyPolicyValue(ByVal value As String) As Boolean
+    Dim textValue As String
+    textValue = UCase$(CleanSecuiText(value))
+    IsAnyPolicyValue = (Len(textValue) = 0 _
+        Or textValue = "ANY" _
+        Or textValue = "ALL" _
+        Or textValue = "*" _
+        Or textValue = "0.0.0.0/0")
+End Function
+
 Private Function MergeFolderFiles( _
         ByVal folderPath As String, _
         ByVal requestsSheet As Worksheet, _
