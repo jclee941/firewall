@@ -591,7 +591,7 @@ Private Function BuildSecuiCliServiceFanoutIndex(ByVal requestsSheet As Workshee
                 sourceDestinationKey = SecuiCliSourceDestinationKey(firewallName, sourceObject, sourceAddress, destinationObject, destinationAddress)
                 If Not serviceFanoutIndex.Exists(sourceDestinationKey) Then
                     Set services = CreateObject("Scripting.Dictionary")
-                    serviceFanoutIndex(sourceDestinationKey) = services
+                    Set serviceFanoutIndex(sourceDestinationKey) = services
                 Else
                     Set services = serviceFanoutIndex(sourceDestinationKey)
                 End If
@@ -633,7 +633,7 @@ Private Sub CollectSecuiCliRows(ByVal requestsSheet As Worksheet, ByVal secuiFir
             End If
             If Not cliGroups.Exists(groupKey) Then
                 Set group = NewSecuiCliGroup(requestsSheet, requestRow, firewallName, destinationObject, serviceObject)
-                cliGroups(groupKey) = group
+                Set cliGroups(groupKey) = group
             Else
                 Set group = cliGroups(groupKey)
             End If
