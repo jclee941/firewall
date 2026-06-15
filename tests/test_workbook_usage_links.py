@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,7 +13,7 @@ XLSM = ROOT / "dist" / "firewall-policy-automation.xlsm"
 
 @pytest.fixture(scope="module")
 def xlsm_path() -> Path:
-    subprocess.run(
+    _ = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "build_xlsm.py")],
         cwd=ROOT,
         check=True,
@@ -35,12 +34,9 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
         targets = {
             "requests",
             "firewalls",
+            "firewall_ranges",
             "settings",
-            "secui_batch",
             "secui_cli",
-            "secui_policy_export",
-            "policy_analysis",
-            "policy_summary",
             "vendor_cli_templates",
         }
 
@@ -62,7 +58,6 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
 
     hidden_targets = {
         "header_aliases",
-        "firewall_ranges",
         "processing_log",
         "service_catalog",
         "sample-request-format",

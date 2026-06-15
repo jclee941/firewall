@@ -65,7 +65,6 @@ def test_modules_present(xlsm_path):
         assert "Module1" not in names
         assert "AnalyzeRequestRoutes" in g.get_module("FirewallRouteAnalysis")
         assert "MergeFirewallRequestFolder" in g.get_module("FirewallPolicyAutomation")
-        assert "ConvertRequestsToSecuiBatch" in g.get_module("FirewallPolicyAutomation")
         assert "ConvertRequestsToSecuiCli" in g.get_module("FirewallPolicyAutomation")
         assert "SetupFirewallAutomationWorkbook" in g.get_module("FirewallPolicyAutomation")
     finally:
@@ -78,7 +77,7 @@ def test_sheets_and_headers(xlsm_path):
     expected_sheets = {
         "requests", "firewalls", "firewall_ranges",
         "settings", "header_aliases", "processing_log", "sample-request-format", "usage",
-        "secui_batch", "secui_cli", "vendor_cli_templates", "service_catalog",
+        "secui_cli", "vendor_cli_templates", "service_catalog",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -92,14 +91,6 @@ def test_sheets_and_headers(xlsm_path):
         "settings": ["key", "value", "\uc124\uba85"],
         "header_aliases": ["standard", "your_column", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
-        "secui_batch": [
-            "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\ucd9c\ubc1c\uc9c0\uc8fc\uc18c",
-            "\ucd9c\ubc1c\uc9c0\uba85", "\ubaa9\uc801\uc9c0\uc8fc\uc18c", "\ubaa9\uc801\uc9c0\uba85",
-            "\uc11c\ube44\uc2a4", "\ud504\ub85c\ud1a0\ucf5c", "\ubaa9\uc801\uc9c0\ud3ec\ud2b8",
-            "\ub3d9\uc791", "\ub85c\uadf8", "\uc0ac\uc6a9\uc5ec\ubd80", "\uc2dc\uc791\uc77c",
-            "\uc885\ub8cc\uc77c", "\uc124\uba85", "\uc2e0\uccad\ubd80\uc11c",
-            "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
-        ],
         "secui_cli": [
             "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
             "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
@@ -145,16 +136,12 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
         "requests",
         "settings",
         "firewalls",
-        "secui_policy_export",
-        "policy_summary",
-        "policy_analysis",
-        "secui_batch",
+        "firewall_ranges",
         "secui_cli",
         "vendor_cli_templates",
     }
     support_data_sheets = {
         "header_aliases",
-        "firewall_ranges",
         "processing_log",
         "service_catalog",
         "sample-request-format",
@@ -432,16 +419,14 @@ def test_policy_module_has_no_merge_time_legacy_firewall_matching():
     assert "COL_TARGET_FIREWALLS).Value = ResolveTargetFirewalls" not in src
 
 
-def test_secui_batch_macro_splits_multi_hop_targets():
+def test_legacy_batch_and_policy_analysis_surfaces_are_removed():
     src = open(VBA_POLICY, encoding="utf-8").read()
-    assert "Public Sub ConvertRequestsToSecuiBatch" in src
-    assert "SECUI_BATCH_SHEET" in src
-    assert "LoadSecuiFirewalls(firewallsSheet)" in src
-    assert 'vendorName = UCase$(Trim$(CStr(firewallsSheet.Cells(rowIndex, FW_COL_VENDOR).Value)))' in src
-    assert 'vendorName = "SECUI"' in src
-    assert "FirewallRowEnabled(firewallsSheet.Cells(rowIndex, FW_COL_ENABLED).Value)" in src
-    assert 'targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")' in src
-    assert "secuiFirewalls.Exists(SecuiFirewallKey(firewallName))" in src
+    assert "ConvertRequestsToSecuiBatch" not in src
+    assert "SECUI_BATCH_SHEET" not in src
+    assert "AnalyzeSecuiPolicyExport" not in src
+    assert "SECUI_POLICY_EXPORT_SHEET" not in src
+    assert "POLICY_ANALYSIS_SHEET" not in src
+    assert "POLICY_SUMMARY_SHEET" not in src
 
 
 def test_secui_cli_macro_generates_fw_set_srule_commands():
@@ -757,9 +742,9 @@ def test_auto_run_macro_refreshes_cli_outputs_without_folder_prompt():
     macro = src[start:end]
     assert "FolderExists(SettingsValue(settingsSheet, \"request_folder\"))" in macro
     assert "MergeFirewallRequestFolder" in macro
-    assert "ConvertRequestsToSecuiBatch" in macro
     assert "ConvertRequestsToSecuiCli" in macro
-    assert "AnalyzeSecuiPolicyExport" in macro
+    assert "ConvertRequestsToSecuiBatch" not in macro
+    assert "AnalyzeSecuiPolicyExport" not in macro
     assert "WriteSettings" not in macro
     assert "RequestFolderPath" not in macro
 

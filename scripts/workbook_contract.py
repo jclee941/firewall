@@ -37,62 +37,9 @@ SETTINGS: Final = [
 
 PROCESSING_LOG: Final = [["processed_at", "source_file", "status", "merged_rows", "message"]]
 
-SECUI_BATCH_HEADERS: Final = [
-    "No", "장비명", "정책명", "출발지주소", "출발지명", "목적지주소", "목적지명",
-    "서비스", "프로토콜", "목적지포트", "동작", "로그", "사용여부", "시작일",
-    "종료일", "설명", "신청부서", "신청번호", "원본파일", "원본행",
-]
-
 SECUI_CLI_HEADERS: Final = [
     "No", "장비명", "정책명", "명령어", "검토메모", "신청부서", "신청번호",
     "원본파일", "원본행",
-]
-
-SECUI_POLICY_EXPORT: Final = [
-    ["policy_id", "policy_name", "firewall_name", "source", "destination", "service", "action", "enabled", "comment"],
-    ["1001", "ALLOW_WEB_TO_DMZ", "SECUI-FW-01", "10.10.10.5", "10.20.20.5", "tcp/443", "allow", "Y", "기존 허용 정책"],
-    ["1002", "DENY_DNS_TO_INTERNET", "SECUI-FW-03", "10.10.10.5", "8.8.8.8", "udp/53", "deny", "Y", "차단 검토 필요"],
-    ["1003", "DISABLED_DMZ_TEST", "SECUI-FW-02", "10.10.10.5", "10.20.20.5", "tcp/8443", "allow", "N", "비활성 정책"],
-]
-
-POLICY_ANALYSIS_HEADERS: Final = [
-    "판정", "요청번호", "대상방화벽", "출발지", "목적지", "서비스", "기존정책",
-    "기존정책상태", "근거", "조치",
-    "요청원본행", "정책원본행", "raw_source", "raw_destination", "raw_service",
-    "normalized_source", "normalized_destination", "normalized_protocol", "normalized_port",
-    "debug_note",
-]
-
-POLICY_ANALYSIS_ROWS: Final = [
-    [
-        "EXISTING_ALLOW", "1234", "SECUI-FW-01", "10.10.10.5", "10.20.20.5", "TCP/443",
-        "ALLOW_WEB_TO_DMZ", "사용", "출발지/목적지/서비스/허용 정책 일치", "기존 정책 확인 후 신청 처리 생략 검토",
-        3, 2, "10.10.10.5", "10.20.20.5", "tcp/443", "10.10.10.5", "10.20.20.5", "TCP", "443",
-        "seed: exact allow match",
-    ],
-    [
-        "EXISTING_DENY", "1234", "SECUI-FW-03", "10.10.10.5", "8.8.8.8", "UDP/53",
-        "DENY_DNS_TO_INTERNET", "사용", "차단 정책이 같은 트래픽과 일치", "방화벽 담당자 검토 필요",
-        4, 3, "10.10.10.5", "8.8.8.8", "udp/53", "10.10.10.5", "8.8.8.8", "UDP", "53",
-        "seed: deny match",
-    ],
-    [
-        "NO_EXISTING_POLICY", "5678", "", "10.10.50.5", "172.16.9.9", "TCP/1521",
-        "", "없음", "일치하는 기존 SECUI export 정책 없음", "신규 정책 생성 검토",
-        5, "", "", "", "", "10.10.50.5", "172.16.9.9", "TCP", "1521",
-        "seed: no match",
-    ],
-]
-
-POLICY_SUMMARY_HEADERS: Final = ["구분", "건수", "검토 기준", "다음 조치"]
-
-POLICY_SUMMARY_ROWS: Final = [
-    ["전체", '=COUNTA(policy_analysis!A2:A5000)', "분석 대상 전체", "상태별 건수를 먼저 확인"],
-    ["기존 허용", '=COUNTIF(policy_analysis!A2:A5000,"EXISTING_ALLOW")', "기존 허용 정책이 신청을 커버", "중복 신청 생략 또는 근거 첨부"],
-    ["기존 차단", '=COUNTIF(policy_analysis!A2:A5000,"EXISTING_DENY")', "차단 정책과 일치", "방화벽 담당자 검토"],
-    ["검토 필요", '=COUNTIF(policy_analysis!A2:A5000,"PARTIAL_MATCH")+COUNTIF(policy_analysis!A2:A5000,"OBJECT_UNRESOLVED")', "부분 일치 또는 객체명 미해석", "SECUI 객체/서비스 확인"],
-    ["비활성 일치", '=COUNTIF(policy_analysis!A2:A5000,"DISABLED_MATCH")', "비활성 정책과 일치", "활성화 가능 여부 검토"],
-    ["기존 정책 없음", '=COUNTIF(policy_analysis!A2:A5000,"NO_EXISTING_POLICY")', "일치 정책 없음", "신규 정책 생성 검토"],
 ]
 
 VENDOR_CLI_TEMPLATES: Final = [
@@ -141,16 +88,14 @@ USAGE: Final = [
     ["3", "vendor_cli_templates 시트에서 SECUI CLI 템플릿과 검토 메모를 확인한다"],
     ["4", "IP/CIDR/포트 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
     ["5", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 선택한다"],
-    ["6", "통합 문서를 열면 request_folder가 있을 때 신청서 통합 후 secui_batch/secui_cli/policy_analysis를 자동 생성한다"],
+    ["6", "통합 문서를 열면 request_folder가 있을 때 신청서 통합 후 secui_cli를 자동 생성한다"],
     ["7", "라우팅 자동 탐색은 추후 기능이다. 현재 CLI 생성은 대상방화벽 입력값을 기준으로 한다"],
-    ["8", "필요하면 MergeFirewallRequestFolder, ConvertRequestsToSecuiBatch, ConvertRequestsToSecuiCli를 수동 실행한다"],
+    ["8", "필요하면 MergeFirewallRequestFolder, ConvertRequestsToSecuiCli를 수동 실행한다"],
     ["9", "필요하면 vendor_cli_templates의 command_template을 장비 CLI 형식에 맞게 수정한다"],
     ["10", "ConvertRequestsToSecuiCli 매크로로 합쳐도 권한이 넓어지지 않는 신청을 룰별 그룹객체와 정책 CLI로 묶는다"],
-    ["11", "ANY는 객체를 만들지 않고 정책에 직접 들어간다. 인터페이스는 숨김 firewall_ranges의 source_interface/destination_interface 기준이다"],
-    ["12", "기존 정책 검토가 필요하면 secui_policy_export에 export 정책을 붙여넣고 AnalyzeSecuiPolicyExport를 실행한다"],
-    ["13", "검증상태/방화벽경로 컬럼은 기본 숨김이다. 라우팅 검토가 필요할 때만 AnalyzeRequestRoutes를 수동 실행한다"],
+    ["11", "ANY는 객체를 만들지 않고 정책에 직접 들어간다. 인터페이스는 firewall_ranges의 source_interface/destination_interface 기준이다"],
     ["⚠", "입력 시트(녹색·황색 탭)는 보호되어 있다. 헤더는 수정 불가, 데이터 입력 영역만 타이핑 가능"],
-    ["ℹ", "requests·policy_analysis·policy_summary·processing_log(파랑·회색 탭)은 매크로가 자동으로 채운다. 직접 수정하지 않는다"],
+    ["ℹ", "requests·secui_cli·processing_log(파랑·회색 탭)은 매크로가 자동으로 채운다. 직접 수정하지 않는다"],
     ["💡", "프로토콜·포트는 service_catalog 예시를 참고하고, 방향은 드롭다운에서 선택한다"],
 ]
 
@@ -208,20 +153,8 @@ WIDTHS: Final = {
     "settings": {"A": 22, "B": 26, "C": 60},
     "header_aliases": {"A": 16, "B": 22, "C": 44},
     "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
-    "secui_batch": {
-        "A": 6, "B": 18, "C": 36, "D": 18, "E": 18, "F": 18, "G": 18,
-        "H": 16, "I": 10, "J": 12, "K": 10, "L": 8, "M": 10, "N": 12,
-        "O": 12, "P": 42, "Q": 16, "R": 14, "S": 24, "T": 10,
-    },
     "secui_cli": {"A": 6, "B": 18, "C": 36, "D": 120, "E": 60,
                   "F": 16, "G": 14, "H": 24, "I": 10},
-    "secui_policy_export": {"A": 12, "B": 28, "C": 18, "D": 22, "E": 22,
-                             "F": 16, "G": 12, "H": 10, "I": 36},
-    "policy_analysis": {"A": 18, "B": 12, "C": 24, "D": 18, "E": 18,
-                         "F": 14, "G": 28, "H": 14, "I": 42, "J": 28,
-                         "K": 10, "L": 10, "M": 22, "N": 22, "O": 16,
-                         "P": 22, "Q": 22, "R": 12, "S": 12, "T": 36},
-    "policy_summary": {"A": 16, "B": 10, "C": 34, "D": 34},
     "vendor_cli_templates": {"A": 10, "B": 24, "C": 9, "D": 150, "E": 60},
     "service_catalog": {"A": 18, "B": 10, "C": 12, "D": 18, "E": 44},
     "sample-request-format": {"A": 4, "B": 6, "C": 22, "D": 16, "E": 12, "F": 16,
@@ -232,10 +165,9 @@ WIDTHS: Final = {
 
 FILTER_SHEETS: Final = {
     "requests", "firewalls", "firewall_ranges", "processing_log", "service_catalog",
-    "secui_policy_export", "policy_analysis", "policy_summary",
 }
 
-FREEZE_PANES: Final = {"requests": "H3", "policy_analysis": "A2", "policy_summary": "A2"}
+FREEZE_PANES: Final = {"requests": "H3"}
 
 TAB_COLORS: Final = {
     "requests": "FF4472C4",
@@ -244,11 +176,7 @@ TAB_COLORS: Final = {
     "settings": "FFFFC000",
     "header_aliases": "FFFFC000",
     "processing_log": "FFA6A6A6",
-    "secui_batch": "FF4472C4",
     "secui_cli": "FF4472C4",
-    "secui_policy_export": "FFFFC000",
-    "policy_analysis": "FF4472C4",
-    "policy_summary": "FF4472C4",
     "vendor_cli_templates": "FFFFC000",
     "service_catalog": "FFED7D31",
     "sample-request-format": "FFED7D31",
@@ -260,17 +188,13 @@ OPERATOR_VISIBLE_SHEETS: Final = {
     "requests",
     "settings",
     "firewalls",
-    "secui_policy_export",
-    "policy_summary",
-    "policy_analysis",
-    "secui_batch",
+    "firewall_ranges",
     "secui_cli",
     "vendor_cli_templates",
 }
 
 SUPPORT_DATA_SHEETS: Final = {
     "header_aliases",
-    "firewall_ranges",
     "processing_log",
     "service_catalog",
     "sample-request-format",
@@ -281,7 +205,6 @@ PROTECT_SHEETS: Final = {
     "firewall_ranges",
     "settings",
     "header_aliases",
-    "secui_policy_export",
     "vendor_cli_templates",
     "service_catalog",
 }

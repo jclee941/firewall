@@ -63,10 +63,11 @@ jobs:
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
                   "settings", "header_aliases", "processing_log",
-                  "secui_batch", "secui_cli", "secui_policy_export",
-                  "policy_analysis", "policy_summary", "vendor_cli_templates",
+                  "secui_cli", "vendor_cli_templates",
                   "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
+          legacy = {"secui_batch", "secui_policy_export", "policy_analysis", "policy_summary"}
+          assert legacy.isdisjoint(set(wb.sheetnames)), wb.sheetnames
           assert wb["requests"].max_column == 25, wb["requests"].max_column
           print("artifact OK:", p)
           PY
@@ -104,7 +105,7 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           NOTES_FILE="$(mktemp)"
           cat > "$NOTES_FILE" <<'EOF'
-          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI 배치/CLI를 생성하는 Excel 네이티브(VBA) 도구입니다.
+          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI CLI를 생성하는 Excel 네이티브(VBA) 도구입니다.
 
           ## 다운로드 / 설치
           아래 **firewall-policy-automation.xlsm** 하나만 받으면 됩니다 (매크로·시트·데이터 전부 내장). Microsoft Excel(Windows)에서 열고 매크로를 사용 설정하세요.
@@ -114,8 +115,8 @@ jobs:
           2. `requests` 또는 신청서 원본 `대상방화벽` : CLI 생성 대상 장비명 (`;`로 복수 입력)
           3. `vendor_cli_templates` : SECUI 정책 생성 CLI 템플릿 확인/수정
           4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
-          5. 신청서를 폴더에 모은 뒤 통합 문서를 열면 `request_folder` 기준 신청서 통합과 `secui_batch`/`secui_cli` 생성이 자동 실행됩니다.
-          6. 수동 실행이 필요하면 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiBatch`, `ConvertRequestsToSecuiCli`를 실행하세요.
+          5. 신청서를 폴더에 모은 뒤 통합 문서를 열면 `request_folder` 기준 신청서 통합과 `secui_cli` 생성이 자동 실행됩니다.
+          6. 수동 실행이 필요하면 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiCli`를 실행하세요.
 
           ## 주요 기능
           - 라우팅 자동 탐색 없이 `대상방화벽` 입력값 기준 SECUI CLI 생성
@@ -125,13 +126,12 @@ jobs:
           - 출발지와 서비스가 동시에 다른 조합은 과허용 방지를 위해 분리
           - 출발지/목적지/서비스 룰별 그룹 객체 생성 후 정책에서 참조
           - `ANY`, `ALL`, `*`, `0.0.0.0/0`은 객체 생성 없이 정책 `ANY`로 출력
-          - 숨김 `firewall_ranges` 보조 컬럼의 source_interface/destination_interface를 CLI 템플릿에 반영
+          - 사용자 설정 시트 `firewall_ranges`의 source_interface/destination_interface를 CLI 템플릿에 반영
           - 세로 병합 셀 신청서 처리 (행 누락 없음)
           - 하위폴더 재귀 + 폴더명 파싱 (정보보호센터_1234 → 팀/문서번호)
           - 사용자 정의 헤더 별칭 (settings header_alias)
           - DRM 환경 대응 (VBA Workbooks.Open), .xls/.xlsx/.xlsm 처리
-          - SECUI export 기반 기존 정책 비교 (`secui_policy_export` → `policy_analysis`)
-          - 기존 허용·차단·검토필요 건수 요약 (`policy_summary`)
+          - 배치 양식, 기존 정책 export 비교, 정책 요약 시트는 CLI 정합성 우선 범위에서 제거
 
           첨부물: `firewall-policy-automation-<버전>.xlsm`(단일 파일) + `firewall-policy-automation-<버전>-bundle.zip`(xlsm + request-folder 동봉).
           이 릴리즈는 GitHub Actions에서 자동 빌드·테스트·검증되었습니다.

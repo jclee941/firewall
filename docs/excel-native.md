@@ -8,8 +8,8 @@
 2. `firewalls`에 SECUI 장비명, 벤더, 사용여부를 먼저 채웁니다.
 3. `settings.request_folder`에 신청서 폴더를 입력하거나 `SelectRequestFolder`로 선택합니다.
 4. 신청서 원본 또는 `requests`의 `대상방화벽`에 SECUI 장비명을 입력합니다. 여러 장비는 `;`로 구분합니다.
-5. 통합 문서를 다시 열면 `Workbook_Open`이 신청서 통합, `secui_batch`, `secui_cli`, 기존 정책 분석 출력을 자동 생성합니다.
-6. 자동 실행을 기다리지 않으려면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiBatch`, `ConvertRequestsToSecuiCli`를 수동 실행합니다.
+5. 통합 문서를 다시 열면 `Workbook_Open`이 신청서 통합과 `secui_cli` 출력을 자동 생성합니다.
+6. 자동 실행을 기다리지 않으려면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiCli`를 수동 실행합니다.
 
 ## 매크로
 
@@ -19,8 +19,6 @@
 | `SelectRequestFolder` | 신청서 폴더 선택 |
 | `MergeFirewallRequestFolder` | 신청서 폴더 통합 |
 | `AnalyzeRequestRoutes` | 추후 라우팅 검증용 수동 재분석 |
-| `AnalyzeSecuiPolicyExport` | SECUI export 기존 정책과 신청서 비교 분석 |
-| `ConvertRequestsToSecuiBatch` | SECUI 배치 양식 생성 |
 | `ConvertRequestsToSecuiCli` | SECUI CLI 초안 생성 |
 | `CreateSampleRequestWorkbook` | 신청서 샘플 파일 생성 |
 
@@ -82,16 +80,6 @@ SECUI 변환 매크로는 `대상방화벽`에 적힌 장비 중 `firewalls.vend
 CLI 명령 형식은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`에서 수정합니다. 기본 템플릿은 `{policy_name_q}`, `{source_interface_q}`, `{destination_interface_q}`, `{source_object_q}`, `{destination_object_q}`, `{service_object_q}`, `{description_q}`, `{firewall_name}` placeholder를 사용합니다.
 
 `service_catalog` 시트에서 SECUI 서비스 표기 예시(`tcp/443`, `udp/53`, `icmp/`)를 확인할 수 있습니다. 이 시트는 입력 편의용 참고표이며 `requests`의 포트 입력을 제한하지 않습니다.
-
-## 기존 정책 분석
-
-폐쇄망 SECUI export 파일은 이 저장소에 넣지 않습니다. 운영자는 export 결과에서 필요한 열을 `secui_policy_export`에 붙여넣고 `AnalyzeSecuiPolicyExport`를 실행합니다.
-
-`policy_analysis`는 최종 검토 테이블입니다. 기본 화면에는 `판정`, `요청번호`, `대상방화벽`, `출발지`, `목적지`, `서비스`, `기존정책`, `기존정책상태`, `근거`, `조치`만 보입니다. K:T의 원본행, raw export 값, 정규화 보조값은 숨김 컬럼입니다.
-
-색상은 업무 판단 기준입니다. 초록은 기존 허용 정책이 신청을 커버함, 노랑은 부분 일치·비활성·객체명 미해석으로 검토 필요, 빨강은 차단 정책 일치 또는 기존 정책 없음입니다.
-
-`policy_summary`는 상세 검토 전에 보는 요약 시트입니다. 전체, 기존 허용, 기존 차단, 검토 필요, 비활성 일치, 기존 정책 없음 건수를 보여 주고 각 상태의 다음 조치를 함께 표시합니다.
 
 ## 개발 검증
 

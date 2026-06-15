@@ -32,9 +32,9 @@ def _macro_body(src: str, name: str) -> str:
     return src[start:end]
 
 
-def test_auto_run_formatters_do_not_select_or_freeze_active_window():
+def test_auto_run_vba_does_not_select_or_freeze_active_window():
     src = VBA_POLICY.read_text(encoding="utf-8")
-    for name in ("FormatPolicyAnalysisSheet", "FormatPolicySummarySheet"):
+    for name in ("AutoRunWorkbookOutputs", "ConvertRequestsToSecuiCli", "FormatSecuiCliSheet"):
         body = _macro_body(src, name)
         assert ".Activate" not in body
         assert ".Select" not in body
@@ -56,10 +56,7 @@ def test_auto_run_output_sheets_are_not_protected():
         macro_written = (
             "requests",
             "processing_log",
-            "secui_batch",
             "secui_cli",
-            "policy_analysis",
-            "policy_summary",
         )
         for sheet_name in macro_written:
             assert wb[sheet_name].protection.sheet is False, (

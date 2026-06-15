@@ -5,13 +5,14 @@ import sys
 from pathlib import Path
 
 import openpyxl
+from openpyxl.worksheet.worksheet import Worksheet
 
 ROOT = Path(__file__).resolve().parent.parent
 XLSM = ROOT / "dist" / "firewall-policy-automation.xlsm"
 
 
 def _build() -> None:
-    subprocess.run(
+    _ = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "build_xlsm.py")],
         cwd=ROOT,
         check=True,
@@ -20,7 +21,7 @@ def _build() -> None:
     )
 
 
-def _usage_links(ws) -> set[str]:
+def _usage_links(ws: Worksheet) -> set[str]:
     links: set[str] = set()
     for row in range(1, ws.max_row + 1):
         cell = ws.cell(row=row, column=3)
@@ -30,43 +31,22 @@ def _usage_links(ws) -> set[str]:
     return links
 
 
-def test_policy_summary_guides_existing_policy_review() -> None:
+def test_cli_only_workbook_omits_policy_review_surfaces() -> None:
     _build()
     wb = openpyxl.load_workbook(XLSM, keep_vba=True, data_only=False)
     try:
-        assert "policy_summary" in wb.sheetnames
-
-        summary = wb["policy_summary"]
-        headers = [summary.cell(1, column).value for column in range(1, 5)]
-        assert headers == ["구분", "건수", "검토 기준", "다음 조치"]
-        assert summary.freeze_panes == "A2"
-        assert summary.auto_filter.ref == "A1:D7"
-
-        labels = [summary.cell(row, 1).value for row in range(2, 8)]
-        assert labels == ["전체", "기존 허용", "기존 차단", "검토 필요", "비활성 일치", "기존 정책 없음"]
-        formulas = [summary.cell(row, 2).value for row in range(2, 8)]
-        assert formulas[0] == '=COUNTA(policy_analysis!A2:A5000)'
-        assert '=COUNTIF(policy_analysis!A2:A5000,"EXISTING_ALLOW")' in formulas
-        assert '=COUNTIF(policy_analysis!A2:A5000,"NO_EXISTING_POLICY")' in formulas
-
-        assert "policy_summary" in _usage_links(wb["usage"])
+        assert {"secui_policy_export", "policy_analysis", "policy_summary"}.isdisjoint(wb.sheetnames)
+        assert "secui_cli" in _usage_links(wb["usage"])
     finally:
         wb.close()
 
 
-def test_secui_export_headers_explain_required_paste_shape() -> None:
+def test_batch_surface_is_not_part_of_cli_only_workbook() -> None:
     _build()
     wb = openpyxl.load_workbook(XLSM, keep_vba=True, data_only=False)
     try:
-        export = wb["secui_policy_export"]
-        for column in range(1, 10):
-            comment = export.cell(1, column).comment
-            assert comment is not None
-            assert "붙여넣" in comment.text or "필수" in comment.text
-
-        validation_ranges = [str(dv.sqref) for dv in export.data_validations.dataValidation]
-        assert any("G2:G5000" in sqref for sqref in validation_ranges)
-        assert any("H2:H5000" in sqref for sqref in validation_ranges)
+        assert "secui_batch" not in wb.sheetnames
+        assert "secui_batch" not in _usage_links(wb["usage"])
     finally:
         wb.close()
 

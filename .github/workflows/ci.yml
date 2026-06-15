@@ -62,10 +62,11 @@ jobs:
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
                   "settings", "header_aliases", "processing_log",
-                  "secui_batch", "secui_cli", "secui_policy_export",
-                  "policy_analysis", "policy_summary", "vendor_cli_templates",
+                  "secui_cli", "vendor_cli_templates",
                   "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
+          legacy = {"secui_batch", "secui_policy_export", "policy_analysis", "policy_summary"}
+          assert legacy.isdisjoint(set(wb.sheetnames)), wb.sheetnames
           assert wb["requests"].max_column == 25
           print("CI artifact OK")
           PY
