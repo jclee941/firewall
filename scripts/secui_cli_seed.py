@@ -266,10 +266,16 @@ def _normalize_direction(direction: str) -> str:
     if value in _DIR_BOTH:
         return "BOTH"
     canonical = value.replace("\u2192", ">").replace("->", ">").replace("-", ">")
-    parts = [part.strip() for part in canonical.split(">") if part.strip()]
-    if len(parts) != 2:
+    # Mirror VBA NormalizeDirectionArrowPhrase: split on the FIRST '>' only and
+    # reject any remaining separator (3+ tokens / repeated separators). Empty
+    # tokens are NOT filtered, so '내부-->외부', '->', '내부-' stay #INVALID.
+    pos = canonical.find(">")
+    if pos < 0:
         return "#INVALID"
-    src, dst = parts
+    src = canonical[:pos].strip()
+    dst = canonical[pos + 1:].strip()
+    if ">" in dst or not src or not dst:
+        return "#INVALID"
     if src in _DIR_OUTSIDE and dst in _DIR_INSIDE:
         return "IN"
     if src in _DIR_INSIDE and dst in _DIR_OUTSIDE:

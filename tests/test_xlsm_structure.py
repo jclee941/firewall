@@ -709,6 +709,28 @@ def test_vba_split_address_list_collapses_spaces():
         "SplitAddressList must turn spaces into ';' to split space-separated CIDRs"
 
 
+def test_vba_address_overlap_treats_blank_ip_as_no_match():
+    """Parity: a blank request IP cell must match NOTHING, mirroring Python
+    _address_list_overlaps (empty token list -> False). The VBA bug was that
+    SplitAddressList('') returned a one-element [''] array, so RangesOverlap('',
+    def) was called and IsAnyCidr('') made it overlap every range -> wrong
+    routes / spurious DIRECTION_MISMATCH. Lock the empty-array guard in place."""
+    src = open(VBA_ROUTE, encoding="utf-8").read().replace("\r\n", "\n")
+    split_fn = src[src.find("Private Function SplitAddressList"):]
+    split_fn = split_fn[:split_fn.find("End Function")]
+    assert "If count < 0 Then" in split_fn, \
+        "SplitAddressList must return an empty array when no real tokens exist"
+    assert 'Split(vbNullString, ";", 0)' in split_fn, \
+        "empty SplitAddressList result must be a genuinely empty array"
+
+    overlap_fn = src[src.find("Private Function AddressListOverlaps"):]
+    overlap_fn = overlap_fn[:overlap_fn.find("End Function")]
+    assert "UBound(requests) < LBound(requests)" in overlap_fn, \
+        "AddressListOverlaps must bail out when the request token list is empty"
+    assert "UBound(definitions) < LBound(definitions)" in overlap_fn, \
+        "AddressListOverlaps must bail out when the definition token list is empty"
+
+
 def test_vba_find_header_row_is_content_based():
     """Parity: VBA header detection must score by FIELD CONTENT (IP columns +
     field count), not by an exact 'no'/'번호' cell match. The content scan lives

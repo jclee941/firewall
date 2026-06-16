@@ -193,6 +193,17 @@ INVALID_DIRECTION_SYNONYMS = [
     "좌우",
     "내부",  # standalone, not part of a directional phrase
     "외부",  # standalone, not part of a directional phrase
+    # Malformed arrow phrases must stay #INVALID and match VBA exactly
+    # (VBA splits on the first '>' and rejects any remaining separator).
+    "내부->외부->내부",
+    "->",
+    "내부-",
+    "-내부",
+    "외부->",
+    "내부-->외부",
+    "내부--외부",
+    "외부--내부",
+    "내부->-외부",
 ]
 
 
@@ -214,6 +225,19 @@ def test_normalize_direction_both_synonyms(text):
 @pytest.mark.parametrize("text", INVALID_DIRECTION_SYNONYMS)
 def test_normalize_direction_garbage_remains_invalid(text):
     assert RouteEngine.normalize_direction(text) == "#INVALID"
+
+
+@pytest.mark.parametrize("src,dst", [("", "10.20.20.5"), ("10.10.10.5", ""), ("", "")])
+def test_blank_request_ip_never_matches(engine, src, dst):
+    # A blank 출발지/목적지 cell must match NOTHING (NO_MATCH), not every range.
+    # VBA must mirror this; see test_vba_address_overlap_treats_blank_ip_as_no_match.
+    result = engine.analyze(src, dst, "OUT")
+    assert result.status == "NO_MATCH"
+
+
+@pytest.mark.parametrize("blank", ["", "   ", ";", " ; "])
+def test_split_address_list_drops_blank_tokens(blank):
+    assert split_address_list(blank) == []
 
 
 def test_analyze_outbound_korean_resolves_against_out_ranges(engine):

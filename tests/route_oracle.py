@@ -110,10 +110,18 @@ def _normalize_direction_arrow_phrase(value: str) -> str:
     canonical = (
         value.replace("\u2192", ">").replace("->", ">").replace("-", ">")
     )
-    parts = [part.strip() for part in canonical.split(">") if part.strip()]
-    if len(parts) != 2:
+    # Mirror VBA: split on the FIRST '>' only; reject if a separator remains in
+    # the right side (3+ tokens / repeated separators). Empty tokens are NOT
+    # filtered, so '내부-->외부', '->', '내부-' stay #INVALID.
+    pos = canonical.find(">")
+    if pos < 0:
         return "#INVALID"
-    src, dst = parts
+    src = canonical[:pos].strip()
+    dst = canonical[pos + 1:].strip()
+    if ">" in dst:
+        return "#INVALID"
+    if not src or not dst:
+        return "#INVALID"
     if src in _DIRECTION_OUTSIDE_TOKENS and dst in _DIRECTION_INSIDE_TOKENS:
         return "IN"
     if src in _DIRECTION_INSIDE_TOKENS and dst in _DIRECTION_OUTSIDE_TOKENS:

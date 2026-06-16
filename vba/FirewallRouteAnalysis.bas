@@ -349,6 +349,9 @@ Private Function AddressListOverlaps(ByVal requestValue As String, ByVal definit
     Dim definitions() As String
     requests = SplitAddressList(requestValue)
     definitions = SplitAddressList(definitionValue)
+    ' Mirror Python: empty token lists never overlap (a blank IP cell matches nothing).
+    If UBound(requests) < LBound(requests) Then Exit Function
+    If UBound(definitions) < LBound(definitions) Then Exit Function
 
     Dim i As Long
     Dim j As Long
@@ -431,7 +434,6 @@ Private Function SplitAddressList(ByVal text As String) As String()
     Dim raw() As String
     raw = Split(normalized, ";")
     Dim temp() As String
-    ReDim temp(0 To 0)
     Dim count As Long
     count = -1
     Dim i As Long
@@ -444,7 +446,13 @@ Private Function SplitAddressList(ByVal text As String) As String()
             temp(count) = token
         End If
     Next i
-    SplitAddressList = temp
+    If count < 0 Then
+        ' No real tokens: return a genuinely empty array (UBound < LBound) so
+        ' a blank IP cell matches nothing, mirroring Python split_address_list.
+        SplitAddressList = Split(vbNullString, ";", 0)
+    Else
+        SplitAddressList = temp
+    End If
 End Function
 
 Private Function IsAnyCidr(ByVal text As String) As Boolean
