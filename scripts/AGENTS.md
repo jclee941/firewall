@@ -2,7 +2,7 @@
 
 ## Overview
 
-Linux-only builders for the shipped Excel workbook and sample request-folder tree. These scripts are executable project surfaces, not a Python package.
+Linux-only builders for the shipped Excel workbook and sample request-folder tree, plus the SECUI CLI/GUI runtime that mirrors the in-workbook conversion. These scripts are executable project surfaces; `secui_cli*` import the `firewall_policy` package.
 
 ## Where To Look
 
@@ -14,6 +14,9 @@ Linux-only builders for the shipped Excel workbook and sample request-folder tre
 | Change request-folder samples | `make_request_folder.py`, `../tests/test_request_folder.py`, `../tests/test_folder_parse.py` | Folder names encode team/doc number |
 | Change UX/protection behavior | `workbook_ux.py`, `build_xlsm.py`, `../tests/test_xlsm_structure.py`, `../tests/test_workbook_usage_links.py` | Display/input-assist only; must not alter route semantics |
 | Change SECUI service examples | `workbook_contract.py`, `build_xlsm.py`, `../vba/FirewallPolicyAutomation.bas`, `../tests/test_secui_service_catalog.py` | Reference data only; do not change route logic |
+| Generate SECUI CLI outside Excel | `secui_cli.py`, `secui_cli_runtime.py`, `secui_cli_seed.py`, `../tests/test_secui_cli_script.py` | Reads workbook or request-folder; `secui_cli_runtime` builds grouped rules, `secui_cli_seed` seeds workbook output |
+| Change SECUI GUI / standalone build | `secui_gui.py`, `../firewall_policy/gui_export.py`, `build_standalone_gui.py`, `../tests/test_secui_gui.py` | PySide6 GUI; `build_standalone_gui.py` packages the native bundle |
+| Change release bundle shape | `build_release_bundle.py`, `../tests/test_release_bundle.py` | Zips xlsm + samples + docs; release.yml runs it on `v*` tags |
 
 ## Commands
 
@@ -21,9 +24,11 @@ Linux-only builders for the shipped Excel workbook and sample request-folder tre
 ./.venv/bin/python scripts/build_xlsm.py
 ./.venv/bin/python scripts/make_request_folder.py
 ./.venv/bin/python -m pytest tests/test_xlsm_structure.py -q
+./.venv/bin/python scripts/secui_cli.py --workbook dist/firewall-policy-automation.xlsm --format text
+./.venv/bin/python scripts/secui_gui.py   # PySide6 GUI
 ```
 
-Use the repo venv. There is no `pyproject.toml`; dependencies are pinned in `requirements.txt`.
+Use the repo venv. There is no `pyproject.toml`; deps are pinned in `requirements.txt` plus `requirements-gui.txt` (`PySide6==6.11.1`) for the GUI.
 
 ## Build Contract
 

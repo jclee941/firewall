@@ -14,6 +14,9 @@ Tests are the binding specification for the workbook and VBA behavior. They do n
 | Workbook usage navigation | `test_workbook_usage_links.py` | Verifies `usage` opens first and links to key workbook sheets |
 | Folder/sample parsing | `test_request_folder.py`, `test_folder_parse.py` | Uses `scripts/make_request_folder.py` output |
 | Header alias behavior | `user_alias_oracle.py`, `test_user_alias.py` | Keep built-in aliases and settings/header_alias behavior aligned |
+| SECUI CLI/GUI behavior | `test_secui_cli_script.py`, `test_secui_gui.py`, `test_secui_service_catalog.py`, `test_secui_policy_analysis.py` | Mirror in-workbook SECUI conversion; legacy analysis surfaces are explicitly removed |
+| VBA runtime guards | `test_vba_runtime_guards.py` | Asserts no blanket `On Error Resume Next`; runtime sheets stay unprotected |
+| Release bundle / weekly report | `test_release_bundle.py`, `test_weekly_report_sheet.py`, `test_workbook_convenience.py`, `test_date_cells.py` | Artifact shape and added workbook sheets |
 
 ## Commands
 

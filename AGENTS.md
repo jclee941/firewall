@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-Generated: 2026-06-13
-Commit: 8860d14
+Generated: 2026-06-16
+Commit: fc149aa
 Branch: master
 
 ## Overview
@@ -13,7 +13,8 @@ Excel-native VBA tool for merging firewall-policy request spreadsheets and compu
 ```text
 .
 ├── vba/                  # shipped VBA modules injected into vbaProject.bin
-├── scripts/              # Linux builders/scaffolders for xlsm and request-folder
+├── firewall_policy/       # pure-Python mirrors of VBA parsing; backs secui_cli/gui
+├── scripts/              # Linux builders, SECUI CLI/GUI, release bundlers
 ├── tests/                # Python oracle/spec tests plus workbook structure checks
 ├── docs/                 # operator schema and Excel-native runbook
 ├── request-folder/       # sample request tree; xlsx files are generated/churn-prone
@@ -28,6 +29,8 @@ Excel-native VBA tool for merging firewall-policy request spreadsheets and compu
 | Change workbook sheets/headers/seeds | `scripts/workbook_contract.py`, `scripts/build_xlsm.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py` | Build seed, VBA setup seed, and structure tests must stay in sync |
 | Change workbook UX/navigation | `scripts/workbook_ux.py`, `tests/test_xlsm_structure.py`, `tests/test_workbook_usage_links.py` | Display/input-assist only; never alter route/parser values |
 | Change request parser behavior | `tests/request_parser_oracle.py`, `vba/FirewallPolicyAutomation.bas`, parser tests | Header aliases and merged-cell behavior are mirrored |
+| Generate SECUI CLI outside Excel | `scripts/secui_cli.py`, `scripts/secui_cli_runtime.py`, `scripts/secui_cli_seed.py`, `firewall_policy/request_parser.py` | Linux CLI mirrors the in-workbook SECUI conversion; grouped rule generation |
+| Change SECUI GUI / standalone build | `scripts/secui_gui.py`, `firewall_policy/gui_export.py`, `scripts/build_standalone_gui.py` | PySide6 GUI; packaged native bundle is a release artifact |
 | Change SECUI output | `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py`, docs | Batch and CLI split `대상방화벽` by `;` |
 | Change build/release artifact shape | `scripts/build_xlsm.py`, `scripts/make_request_folder.py`, `.github/workflows/`, `tests/test_xlsm_structure.py` | CI/release are artifact-driven, not package-driven |
 | Release | `.github/workflows/release.yml` | Tags `v*` build, test, verify, bundle, publish |
@@ -39,9 +42,11 @@ Excel-native VBA tool for merging firewall-policy request spreadsheets and compu
 ./.venv/bin/python -m pytest tests/test_route_oracle.py -v
 ./.venv/bin/python scripts/build_xlsm.py
 ./.venv/bin/python scripts/make_request_folder.py
+./.venv/bin/python scripts/secui_cli.py --workbook dist/firewall-policy-automation.xlsm --format text
+./.venv/bin/python scripts/secui_gui.py   # PySide6 GUI
 ```
 
-Use committed `./.venv/bin/python`; dependency pins live in `requirements.txt` (`pyOpenVBA==2.0.0`, `openpyxl==3.1.5`, `pytest==9.0.3`). Build runs on Linux without Windows, Excel, PowerShell, or COM.
+Use committed `./.venv/bin/python`; pins in `requirements.txt` (`pyOpenVBA==2.0.0`, `openpyxl==3.1.5`, `pytest==9.0.3`) and `requirements-gui.txt` (`PySide6==6.11.1`). Build runs on Linux without Windows, Excel, PowerShell, or COM.
 
 ## Current Workbook Contract
 
