@@ -709,12 +709,16 @@ Private Function SecuiAddressListOverlaps(ByVal requestValue As String, ByVal de
     Dim requestPart As Variant
     Dim definitionPart As Variant
 
+    ' A blank request value matches NOTHING, even an ANY definition: check the
+    ' request side before the ANY short-circuit (mirrors route AddressListOverlaps).
+    requestParts = Split(NormalizeListCell(requestValue), ";")
+    If Len(Trim$(NormalizeListCell(requestValue))) = 0 Then Exit Function
+
     If IsAnyPolicyValue(definitionValue) Then
         SecuiAddressListOverlaps = True
         Exit Function
     End If
 
-    requestParts = Split(NormalizeListCell(requestValue), ";")
     definitionParts = Split(NormalizeListCell(definitionValue), ";")
     For Each requestPart In requestParts
         For Each definitionPart In definitionParts
