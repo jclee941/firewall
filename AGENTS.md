@@ -50,12 +50,13 @@ Use committed `./.venv/bin/python`; pins in `requirements.txt` (`pyOpenVBA==2.0.
 
 ## Current Workbook Contract
 
-- `requests` has exactly 25 columns. Row 1 is the cosmetic group band; row 2 is canonical headers; data starts row 3.
-- Column 7 display header is `대상방화벽`; internal result field remains `target_firewalls`; values join with `;`.
-- `방화벽경로` joins matched firewall rows with `>`.
-- `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거` are display/debug outputs from the first/selected matched range rows.
+- `requests` is a CLEAN 14-column user sheet: 요청부서, 요청번호, 대상방화벽, 출발지, 출발지설명, 목적지, 목적지설명, 프로토콜, 포트, 방향, 용도, 시작일, 종료일, 비고. Headers on row 2; data starts row 3.
+- `대상방화벽` is column 3 in `requests`; internal result field remains `target_firewalls`; values join with `;`.
+- Source tracking (`원본파일`, `원본행`, `요청폴더`, `제목`) lives in the hidden `_request_tracking` sheet (keyed by `request_row`), NOT on `requests`.
+- Route diagnostics (`검증상태`, `검증메시지`, `방화벽경로`, `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거`, `원본파일`, `원본행`) live on `route_results`, not `requests`.
 - Operator input/reference sheets are `firewalls`, `firewall_ranges`, `settings`, `header_aliases`, `vendor_cli_templates`, `service_catalog`.
 - `network_definitions`, `routing_paths`, zone graph BFS, and legacy fallback are removed. Do not reintroduce them.
+- Direction values normalize to `IN`/`OUT`/`BOTH`/`#INVALID`; blanks mean `BOTH`. Korean/business synonyms (인바운드/수신/외부->내부 = IN; 아웃바운드/송신/내부->외부 = OUT; 양방향/ANY = BOTH) are accepted; standalone 내부/외부 stay `#INVALID`. Mirror any change in `tests/route_oracle.py` + `vba/FirewallRouteAnalysis.bas` + `scripts/secui_cli_seed.py`.
 
 ## Route Algorithm
 

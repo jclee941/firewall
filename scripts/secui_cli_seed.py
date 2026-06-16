@@ -243,9 +243,38 @@ def _network_overlaps(left: str, right: str) -> bool:
 
 
 def _direction_matches(rule_direction: str, request_direction: str) -> bool:
-    rule_value = rule_direction.strip().upper() or "BOTH"
-    request_value = request_direction.strip().upper() or "BOTH"
+    rule_value = _normalize_direction(rule_direction)
+    request_value = _normalize_direction(request_direction)
+    if rule_value == "#INVALID" or request_value == "#INVALID":
+        return False
     return rule_value == "BOTH" or request_value == "BOTH" or rule_value == request_value
+
+
+_DIR_IN = ("IN", "INBOUND", "인바운드", "수신")
+_DIR_OUT = ("OUT", "OUTBOUND", "아웃바운드", "송신")
+_DIR_BOTH = ("", "BOTH", "ANY", "ALL", "양방향", "양방", "쌍방향", "BIDIRECTIONAL", "BI-DIRECTIONAL")
+_DIR_INSIDE = ("내부", "INSIDE", "INTERNAL")
+_DIR_OUTSIDE = ("외부", "OUTSIDE", "EXTERNAL")
+
+
+def _normalize_direction(direction: str) -> str:
+    value = (direction or "").strip().upper()
+    if value in _DIR_IN:
+        return "IN"
+    if value in _DIR_OUT:
+        return "OUT"
+    if value in _DIR_BOTH:
+        return "BOTH"
+    canonical = value.replace("\u2192", ">").replace("->", ">").replace("-", ">")
+    parts = [part.strip() for part in canonical.split(">") if part.strip()]
+    if len(parts) != 2:
+        return "#INVALID"
+    src, dst = parts
+    if src in _DIR_OUTSIDE and dst in _DIR_INSIDE:
+        return "IN"
+    if src in _DIR_INSIDE and dst in _DIR_OUTSIDE:
+        return "OUT"
+    return "#INVALID"
 
 
 def _service_text(protocol: str, port: str) -> str:

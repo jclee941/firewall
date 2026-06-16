@@ -50,8 +50,8 @@ def test_secui_protocol_port_headers_point_to_catalog_without_restricting_input(
     wb = openpyxl.load_workbook(xlsm, keep_vba=True)
     req = wb["requests"]
 
-    protocol_comment = req.cell(2, 12).comment
-    port_comment = req.cell(2, 13).comment
+    protocol_comment = req.cell(2, 8).comment
+    port_comment = req.cell(2, 9).comment
     assert protocol_comment is not None
     assert port_comment is not None
     joined = f"{protocol_comment.text}\n{port_comment.text}"
@@ -59,7 +59,7 @@ def test_secui_protocol_port_headers_point_to_catalog_without_restricting_input(
     assert "service_catalog" in joined
     assert "tcp/443" in joined
     assert "udp/53" in joined
-    assert all("M3" not in validation.cells for validation in req.data_validations.dataValidation)
+    assert all("I3" not in validation.cells for validation in req.data_validations.dataValidation)
 
 
 def test_vba_setup_seeds_secui_service_catalog():

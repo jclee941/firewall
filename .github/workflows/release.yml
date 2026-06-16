@@ -68,7 +68,7 @@ jobs:
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
           legacy = {"secui_batch", "secui_policy_export", "policy_analysis", "policy_summary"}
           assert legacy.isdisjoint(set(wb.sheetnames)), wb.sheetnames
-          assert wb["requests"].max_column == 25, wb["requests"].max_column
+          assert wb["requests"].max_column == 14, wb["requests"].max_column
           print("artifact OK:", p)
           PY
 

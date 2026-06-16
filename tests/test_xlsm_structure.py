@@ -24,6 +24,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XLSM = os.path.join(ROOT, "dist", "firewall-policy-automation.xlsm")
 PY = sys.executable
 
+CLEAN_REQUESTS_HEADERS = [
+    "요청부서", "요청번호", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명",
+    "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고",
+]
+
+REMOVED_REQUESTS_HEADERS = {
+    "원본파일", "원본행", "제목", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역",
+    "목적매칭대역", "대역경로", "매칭근거", "요청폴더",
+}
+
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from tests.route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
@@ -110,21 +120,23 @@ def test_sheets_and_headers(xlsm_path):
         actual = [ws.cell(1, c).value for c in range(1, len(headers) + 1)]
         assert actual == headers, f"{sheet} header drift: {actual!r}"
 
-    # requests: exactly 25 columns; canonical leaf headers on row 2 (row 1 is the
-    # cosmetic group-label band). Mirrors VBA WriteRequestHeaders.
-    from scripts.build_xlsm import REQUESTS_HEADERS  # noqa: E402
-    assert len(REQUESTS_HEADERS) == 25
     req = wb["requests"]
-    assert req.max_column == 25, f"requests max_column={req.max_column}"
-    actual_req = [req.cell(2, c).value for c in range(1, 26)]
-    assert actual_req == REQUESTS_HEADERS, f"requests header drift: {actual_req!r}"
-    assert req.cell(2, 7).value == "\ub300\uc0c1\ubc29\ud654\ubcbd"
+    assert req.max_column == len(CLEAN_REQUESTS_HEADERS), f"requests max_column={req.max_column}"
+    actual_req = [req.cell(2, c).value for c in range(1, len(CLEAN_REQUESTS_HEADERS) + 1)]
+    assert actual_req == CLEAN_REQUESTS_HEADERS, f"requests header drift: {actual_req!r}"
+    all_request_headers = [req.cell(2, c).value for c in range(1, req.max_column + 1)]
+    leaked_headers = REMOVED_REQUESTS_HEADERS.intersection(all_request_headers)
+    assert not leaked_headers, f"requests still exposes tracking/internal headers: {sorted(leaked_headers)!r}"
+    assert req.cell(2, 3).value == "\ub300\uc0c1\ubc29\ud654\ubcbd"
+    route_results_headers = [wb["route_results"].cell(1, c).value for c in range(1, wb["route_results"].max_column + 1)]
+    assert "원본파일" in route_results_headers
+    assert "원본행" in route_results_headers
     # row-1 cosmetic group labels: 출발지 over IP+설명, 목적지 over IP+설명, merged.
     merged = {str(rng) for rng in req.merged_cells.ranges}
-    assert req.cell(1, 8).value == "\ucd9c\ubc1c\uc9c0", "row1 출발지 group label missing"
-    assert req.cell(1, 10).value == "\ubaa9\uc801\uc9c0", "row1 목적지 group label missing"
-    assert "H1:I1" in merged, f"출발지 group not merged H1:I1: {merged}"
-    assert "J1:K1" in merged, f"목적지 group not merged J1:K1: {merged}"
+    assert req.cell(1, 4).value == "\ucd9c\ubc1c\uc9c0", "row1 출발지 group label missing"
+    assert req.cell(1, 6).value == "\ubaa9\uc801\uc9c0", "row1 목적지 group label missing"
+    assert "D1:E1" in merged, f"출발지 group not merged D1:E1: {merged}"
+    assert "F1:G1" in merged, f"목적지 group not merged F1:G1: {merged}"
 
     sf = wb["sample-request-format"]
     assert sf.cell(1, 1).value in (None, ""), "sample A1 must be blank"
@@ -164,8 +176,8 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
         assert wb[sheet].sheet_state == "hidden", f"{sheet} must be hidden support data"
     assert wb.active is not None
     assert wb.active.title == "usage"
-    visible_request_columns = {"A", "B", "H", "I", "J", "K", "L", "M", "P", "Q", "R"}
-    for index in range(1, 26):
+    visible_request_columns = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"}
+    for index in range(1, 15):
         from openpyxl.utils import get_column_letter
         column = get_column_letter(index)
         hidden = bool(wb["requests"].column_dimensions[column].hidden)
@@ -466,7 +478,7 @@ def test_secui_cli_macro_generates_fw_set_srule_commands():
 
 def test_secui_cli_conversion_does_not_run_route_analysis(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
-    assert wb["requests"].cell(3, 7).value == "SECUI-FW-01"
+    assert wb["requests"].cell(3, 3).value == "SECUI-FW-01"
 
     src = open(VBA_POLICY, encoding="utf-8").read()
     macro_start = src.find("Public Sub ConvertRequestsToSecuiCli()")
@@ -741,11 +753,14 @@ def test_workbook_open_does_not_swallow_errors():
     g = ex.ExcelFile(XLSM)
     try:
         tw = g.get_module("ThisWorkbook")
-        assert "Workbook_Open" in tw
-        assert "AutoRunWorkbookOutputs" in tw
+        open_start = tw.find("Workbook_Open")
+        assert open_start >= 0
+        open_end = tw.find("End Sub", open_start)
+        workbook_open = tw[open_start:open_end]
+        assert "AutoRunWorkbookOutputs" in workbook_open
         assert "Application.Run" not in tw, "direct call avoids Windows macro name-resolution failures"
-        assert "On Error Resume Next" not in tw, "must not blanket-swallow errors"
-        assert "AutoRunErr" in tw, "must have an error handler that surfaces failures"
+        assert "On Error Resume Next" not in workbook_open, "Workbook_Open must not blanket-swallow errors"
+        assert "AutoRunErr" in workbook_open, "must have an error handler that surfaces failures"
     finally:
         g.close()
 
@@ -755,12 +770,14 @@ def test_auto_run_macro_refreshes_cli_outputs_without_folder_prompt():
     start = src.find("Public Sub AutoRunWorkbookOutputs()")
     end = src.find("End Sub", start)
     macro = src[start:end]
+    assert start >= 0, "AutoRunWorkbookOutputs macro is missing"
     assert "FolderExists(SettingsValue(settingsSheet, \"request_folder\"))" in macro
     assert "MergeFirewallRequestFolder" in macro
     assert "AnalyzeRequestRoutes" in macro
     assert "ConvertRequestsToSecuiCli" in macro
     assert macro.find("MergeFirewallRequestFolder") < macro.find("AnalyzeRequestRoutes")
     assert macro.find("AnalyzeRequestRoutes") < macro.find("ConvertRequestsToSecuiCli")
+    assert "On Error Resume Next" not in macro, "AutoRunWorkbookOutputs must not blanket-swallow errors"
     assert "ConvertRequestsToSecuiBatch" not in macro
     assert "AnalyzeSecuiPolicyExport" not in macro
     assert "WriteSettings" not in macro
@@ -787,7 +804,7 @@ def _dv_for(ws, cell_ref):
 
 
 def test_ux_protocol_direction_dropdowns_on_requests(xlsm_path):
-    """requests 프로토콜(col12)·방향(col14) cells offer a dropdown list.
+    """requests 프로토콜(col8)·방향(col10) cells offer a dropdown list.
 
     Values must stay compatible with the route algorithm: 프로토콜 is display-only
     (TCP/UDP/ICMP); 방향 must be one of the values VBA NormalizeDirection accepts
@@ -796,13 +813,13 @@ def test_ux_protocol_direction_dropdowns_on_requests(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
 
-    proto = _dv_for(req, "L3")
-    assert proto is not None, "프로토콜(col12) has no data validation"
+    proto = _dv_for(req, "H3")
+    assert proto is not None, "프로토콜(col8) has no data validation"
     assert proto.type == "list"
     assert set(proto.formula1.strip('"').split(",")) >= {"TCP", "UDP", "ICMP"}
 
-    direction = _dv_for(req, "N3")
-    assert direction is not None, "방향(col14) has no data validation"
+    direction = _dv_for(req, "J3")
+    assert direction is not None, "방향(col10) has no data validation"
     assert direction.type == "list"
     assert set(direction.formula1.strip('"').split(",")) <= {"IN", "OUT", "BOTH", ""}
     assert {"IN", "OUT"} <= set(direction.formula1.strip('"').split(","))
@@ -852,12 +869,12 @@ def test_ux_settings_folder_cell_unlocked_when_protected(xlsm_path):
 
 def test_ux_required_input_empty_highlight(xlsm_path):
     """requests must carry conditional formatting that flags an empty required input
-    cell (출발지IP col8 / 목적지IP col10). Display-only; never touches values."""
+    cell (출발지 col4 / 목적지 col6). Display-only; never touches values."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
     cf_ranges = [str(rng) for rng in req.conditional_formatting]
     joined = " ".join(cf_ranges)
-    assert ("H" in joined and "J" in joined) or len(cf_ranges) >= 1, \
+    assert ("D" in joined and "F" in joined) or len(cf_ranges) >= 1, \
         "requests has no conditional formatting for empty required cells"
     assert any(req.conditional_formatting[rng] for rng in req.conditional_formatting), \
         "conditional formatting present but carries no rules"
@@ -867,20 +884,20 @@ def test_ux_target_firewall_cell_highlight(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
     cf_ranges = [str(rng) for rng in req.conditional_formatting]
-    assert any("G" in rng for rng in cf_ranges), \
-        "대상방화벽(col7) must have conditional formatting"
+    assert any("C" in rng for rng in cf_ranges), \
+        "대상방화벽(col3) must have conditional formatting"
 
 
 def test_ux_header_comments_on_key_columns(xlsm_path):
-    """Operator-facing 안내 comments must exist on the requests 출발지IP / 목적지IP
+    """Operator-facing 안내 comments must exist on the requests 출발지 / 목적지
     leaf-header cells (row 2), and the format must stay valid (no value drift)."""
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
     req = wb["requests"]
-    assert req.cell(2, 8).comment is not None, "출발지IP header needs a hint comment"
-    assert req.cell(2, 10).comment is not None, "목적지IP header needs a hint comment"
+    assert req.cell(2, 4).comment is not None, "출발지 header needs a hint comment"
+    assert req.cell(2, 6).comment is not None, "목적지 header needs a hint comment"
     # comment must not alter the header value
-    assert req.cell(2, 8).value == "\ucd9c\ubc1c\uc9c0"
-    assert req.cell(2, 10).value == "\ubaa9\uc801\uc9c0"
+    assert req.cell(2, 4).value == "\ucd9c\ubc1c\uc9c0"
+    assert req.cell(2, 6).value == "\ubaa9\uc801\uc9c0"
 
 
 def test_ux_tab_colors_assigned(xlsm_path):

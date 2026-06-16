@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import Final
 
 REQUESTS_HEADERS: Final = [
-    "요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태",
-    "대상방화벽",
-    "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향",
-    "용도", "시작일", "종료일", "비고",
-    "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로",
-    "매칭근거", "요청폴더",
+    "요청부서", "요청번호", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명",
+    "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고",
 ]
+
+REQUEST_TRACKING_SHEET: Final = "_request_tracking"
+REQUEST_TRACKING_HEADERS: Final = ["request_row", "원본파일", "원본행", "요청폴더", "제목"]
 
 FIREWALLS: Final = [
     ["firewall_name", "vendor", "enabled", "comment"],
@@ -158,10 +157,8 @@ EXAMPLE_REQUEST_ROWS: Final = [
 
 WIDTHS: Final = {
     "requests": {
-        "A": 16, "B": 12, "C": 20, "D": 28, "E": 8, "F": 18, "G": 32,
-        "H": 18, "I": 16, "J": 18, "K": 16, "L": 10, "M": 14, "N": 10,
-        "O": 28, "P": 12, "Q": 12, "R": 24, "S": 40, "T": 34, "U": 18,
-        "V": 18, "W": 30, "X": 60, "Y": 24,
+        "A": 16, "B": 12, "C": 32, "D": 18, "E": 16, "F": 18, "G": 16,
+        "H": 10, "I": 14, "J": 10, "K": 28, "L": 12, "M": 12, "N": 24,
     },
     "firewalls": {"A": 16, "B": 10, "C": 9, "D": 28},
     "firewall_ranges": {"A": 16, "B": 18, "C": 18, "D": 10, "E": 12, "F": 9, "G": 36,
@@ -176,6 +173,7 @@ WIDTHS: Final = {
                   "F": 16, "G": 14, "H": 24, "I": 10},
     "vendor_cli_templates": {"A": 10, "B": 24, "C": 9, "D": 150, "E": 60},
     "service_catalog": {"A": 18, "B": 10, "C": 12, "D": 18, "E": 44},
+    REQUEST_TRACKING_SHEET: {"A": 12, "B": 24, "C": 10, "D": 24, "E": 32},
     "sample-request-format": {"A": 4, "B": 6, "C": 22, "D": 16, "E": 12, "F": 16,
                               "G": 12, "H": 10, "I": 8, "J": 8, "K": 18,
                               "L": 12, "M": 12, "N": 14},
@@ -187,7 +185,7 @@ FILTER_SHEETS: Final = {
     "requests", "firewalls", "firewall_ranges", "route_results", "processing_log", "service_catalog",
 }
 
-FREEZE_PANES: Final = {"requests": "H3"}
+FREEZE_PANES: Final = {"requests": "D3"}
 
 TAB_COLORS: Final = {
     "requests": "FF4472C4",
@@ -222,6 +220,7 @@ SUPPORT_DATA_SHEETS: Final = {
     "processing_log",
     "service_catalog",
     "sample-request-format",
+    REQUEST_TRACKING_SHEET,
 }
 
 PROTECT_SHEETS: Final = {

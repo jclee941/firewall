@@ -55,7 +55,7 @@ def test_convenience_surfaces_keep_core_contracts() -> None:
     _build()
     wb = openpyxl.load_workbook(XLSM, keep_vba=True)
     try:
-        assert wb["requests"].max_column == 25
+        assert wb["requests"].max_column == 14
         assert [wb["firewall_ranges"].cell(1, column).value for column in range(1, 8)] == [
             "firewall_name",
             "source_cidr",

@@ -30,8 +30,8 @@ Tests are the binding specification for the workbook and VBA behavior. They do n
 
 - `tests/route_oracle.py` is the route/range algorithm contract.
 - `tests/test_route_oracle.py` must cover every status and edge case the VBA route module implements.
-- `requests` sheet remains exactly 25 columns; header row 2 must match `scripts.build_xlsm.REQUESTS_HEADERS`.
-- `대상방화벽` is column 7 in the built workbook; internal test/oracle field remains `target_firewalls`.
+- `requests` is a clean 14-column user sheet; header row 2 must match `scripts.workbook_contract.REQUESTS_HEADERS`. Source tracking is on hidden `_request_tracking`; route diagnostics on `route_results`.
+- `대상방화벽` is column 3 in the built `requests` workbook; internal test/oracle field remains `target_firewalls`.
 - Generated workbook must contain `firewall_ranges`; it must not require `network_definitions` or `routing_paths`.
 - Injected VBA modules must match `vba/*.bas`; `Module1` must be absent.
 - Release workflow sheet checks must track the same workbook contract as `test_sheets_and_headers`.

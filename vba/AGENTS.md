@@ -28,9 +28,9 @@ LibreOffice/Excel macro execution is unavailable here. Verification is oracle pa
 ## Runtime Contract
 
 - `FirewallRouteAnalysis.bas` uses `firewalls` and `firewall_ranges` only. Do not reintroduce `network_definitions`, `routing_paths`, zone graph BFS, or legacy fallback.
-- Direction values normalize to `IN`, `OUT`, `BOTH`, or `#INVALID`; blanks mean `BOTH`.
+- Direction values normalize to `IN`, `OUT`, `BOTH`, or `#INVALID`; blanks mean `BOTH`. `NormalizeDirection` is `Public` and accepts Korean/business synonyms (인바운드/수신/외부->내부=IN, 아웃바운드/송신/내부->외부=OUT, 양방향/ANY=BOTH); standalone 내부/외부 stay `#INVALID`. `SecuiDirectionMatches` normalizes both sides through it. Mirror in `tests/route_oracle.py` + `scripts/secui_cli_seed.py`.
 - Matched range rows sort by `path_order`, row order, firewall name.
-- `대상방화벽` is column 7 and joins unique firewall names with `;`.
+- `대상방화벽` is column 3 of the clean 14-column `requests` sheet and joins unique firewall names with `;`. Source tracking (원본파일/원본행/요청폴더/제목) is on hidden `_request_tracking`; route diagnostics go to `route_results` only.
 - `방화벽경로` preserves matched range order and joins with `>`.
 - Duplicate marking runs after route analysis and must preserve the route-owned status-cell color.
 - `service_catalog` is an operator reference sheet for SECUI service text examples, not a route-analysis input.

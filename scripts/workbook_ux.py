@@ -14,13 +14,12 @@ from scripts.workbook_contract import (
 )
 
 UX_LAST_ROW = 5000
-REQ_PROTOCOL_COL = 12
-REQ_PORT_COL = 13
-REQ_DIRECTION_COL = 14
-REQ_TARGET_COL = 7
-REQ_SRC_IP_COL = 8
-REQ_DST_IP_COL = 10
-REQ_VISIBLE_FINAL_COLS = (1, 2, 8, 9, 10, 11, 12, 13, 16, 17, 18)
+REQ_PROTOCOL_COL = 8
+REQ_PORT_COL = 9
+REQ_DIRECTION_COL = 10
+REQ_TARGET_COL = 3
+REQ_SRC_IP_COL = 4
+REQ_DST_IP_COL = 6
 REQ_HEADER_ROW = 2
 REQ_DATA_START_ROW = 3
 EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")
@@ -62,8 +61,6 @@ def apply_ux(wb) -> None:
             wb[name].sheet_properties.tabColor = color
 
     req = wb["requests"]
-    for column in range(1, req.max_column + 1):
-        req.column_dimensions[get_column_letter(column)].hidden = column not in REQ_VISIBLE_FINAL_COLS
     add_list_validation(req, get_column_letter(REQ_PROTOCOL_COL), ["TCP", "UDP", "ICMP"], start_row=REQ_DATA_START_ROW)
     add_list_validation(req, get_column_letter(REQ_DIRECTION_COL), ["IN", "OUT", "BOTH"], start_row=REQ_DATA_START_ROW)
 

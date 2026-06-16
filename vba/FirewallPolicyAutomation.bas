@@ -3,6 +3,7 @@ Option Explicit
 Private Const SETTINGS_SHEET As String = "settings"
 Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const REQUESTS_SHEET As String = "requests"
+Private Const REQUEST_TRACKING_SHEET As String = "_request_tracking"
 Private Const SECUI_CLI_SHEET As String = "secui_cli"
 Private Const VENDOR_CLI_TEMPLATE_SHEET As String = "vendor_cli_templates"
 Private Const SERVICE_CATALOG_SHEET As String = "service_catalog"
@@ -15,32 +16,26 @@ Private Const ROUTE_RESULTS_SHEET As String = "route_results"
 Private Const REQ_HEADER_GROUP_ROW As Long = 1
 Private Const REQ_HEADER_ROW As Long = 2
 Private Const REQ_DATA_START_ROW As Long = 3
-Private Const REQ_LAST_COL As Long = 25
+Private Const REQ_LAST_COL As Long = 14
 Private Const COL_REQUEST_TEAM As Long = 1
 Private Const COL_REQUEST_DOC_NO As Long = 2
-Private Const COL_REQUEST_TITLE As Long = 3
-Private Const COL_SOURCE_FILE As Long = 4
-Private Const COL_SOURCE_ROW As Long = 5
-Private Const COL_VALIDATION_STATUS As Long = 6
-Private Const COL_TARGET_FIREWALLS As Long = 7
-Private Const COL_SOURCE_IP As Long = 8
-Private Const COL_SOURCE_NAME As Long = 9
-Private Const COL_DESTINATION_IP As Long = 10
-Private Const COL_DESTINATION_NAME As Long = 11
-Private Const COL_PROTOCOL As Long = 12
-Private Const COL_PORT As Long = 13
-Private Const COL_DIRECTION As Long = 14
-Private Const COL_PURPOSE As Long = 15
-Private Const COL_START_DATE As Long = 16
-Private Const COL_END_DATE As Long = 17
-Private Const COL_NOTE As Long = 18
-Private Const COL_VALIDATION_MESSAGE As Long = 19
-Private Const COL_FIREWALL_PATH As Long = 20
-Private Const COL_SOURCE_ZONE As Long = 21
-Private Const COL_DESTINATION_ZONE As Long = 22
-Private Const COL_ZONE_PATH As Long = 23
-Private Const COL_MATCH_DETAILS As Long = 24
-Private Const COL_REQUEST_FOLDER As Long = 25
+Private Const COL_TARGET_FIREWALLS As Long = 3
+Private Const COL_SOURCE_IP As Long = 4
+Private Const COL_SOURCE_NAME As Long = 5
+Private Const COL_DESTINATION_IP As Long = 6
+Private Const COL_DESTINATION_NAME As Long = 7
+Private Const COL_PROTOCOL As Long = 8
+Private Const COL_PORT As Long = 9
+Private Const COL_DIRECTION As Long = 10
+Private Const COL_PURPOSE As Long = 11
+Private Const COL_START_DATE As Long = 12
+Private Const COL_END_DATE As Long = 13
+Private Const COL_NOTE As Long = 14
+Private Const TCOL_REQUEST_ROW As Long = 1
+Private Const TCOL_SOURCE_FILE As Long = 2
+Private Const TCOL_SOURCE_ROW As Long = 3
+Private Const TCOL_REQUEST_FOLDER As Long = 4
+Private Const TCOL_REQUEST_TITLE As Long = 5
 Private Const SECUI_CLI_LAST_COL As Long = 9
 Private Const FW_COL_NAME As Long = 1
 Private Const FW_COL_VENDOR As Long = 2
@@ -86,6 +81,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Dim firewallRangeSheet As Worksheet
     Dim settingsSheet As Worksheet
     Dim logSheet As Worksheet
+    Dim trackingSheet As Worksheet
     Dim routeResultsSheet As Worksheet
     Dim secuiCliSheet As Worksheet
     Dim vendorCliTemplateSheet As Worksheet
@@ -96,6 +92,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Set firewallRangeSheet = EnsureSheet(FIREWALL_RANGE_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
     Set logSheet = EnsureSheet(LOG_SHEET)
+    Set trackingSheet = EnsureSheet(REQUEST_TRACKING_SHEET)
     Set routeResultsSheet = EnsureSheet(ROUTE_RESULTS_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
     Set vendorCliTemplateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
@@ -106,6 +103,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     WriteFirewallRangeHeaders firewallRangeSheet
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
+    WriteRequestTrackingHeaders trackingSheet
     WriteRouteResultsHeaders routeResultsSheet
     WriteSecuiCliHeaders secuiCliSheet
     WriteVendorCliTemplateHeaders vendorCliTemplateSheet
@@ -114,6 +112,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     FormatFirewallsSheet firewallsSheet
     FormatGenericSheet firewallRangeSheet, "A:K"
     FormatLogSheet logSheet
+    FormatRequestTrackingSheet trackingSheet
     FormatRouteResultsSheet routeResultsSheet
     FormatSecuiCliSheet secuiCliSheet
     FormatGenericSheet vendorCliTemplateSheet, "A:E"
@@ -129,6 +128,7 @@ Public Sub MergeFirewallRequestFolder()
     Dim firewallsSheet As Worksheet
     Dim settingsSheet As Worksheet
     Dim logSheet As Worksheet
+    Dim trackingSheet As Worksheet
     Dim nextRow As Long
     Dim mergedCount As Long
 
@@ -136,21 +136,25 @@ Public Sub MergeFirewallRequestFolder()
     Set firewallsSheet = EnsureSheet(FIREWALLS_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
     Set logSheet = EnsureSheet(LOG_SHEET)
+    Set trackingSheet = EnsureSheet(REQUEST_TRACKING_SHEET)
     WriteRequestHeaders requestsSheet
     WriteFirewallHeaders firewallsSheet
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
+    WriteRequestTrackingHeaders trackingSheet
     LoadUserAliases settingsSheet
     mParseSheetName = SettingsValue(settingsSheet, "parse_sheet")
     folderPath = RequestFolderPath(settingsSheet)
     If Len(folderPath) = 0 Then Exit Sub
 
     requestsSheet.Rows(REQ_DATA_START_ROW & ":" & requestsSheet.Rows.Count).Clear
+    trackingSheet.Rows("2:" & trackingSheet.Rows.Count).ClearContents
     logSheet.Rows("2:" & logSheet.Rows.Count).ClearContents
     nextRow = REQ_DATA_START_ROW
-    mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, logSheet, nextRow)
+    mergedCount = MergeFolderFiles(folderPath, requestsSheet, firewallsSheet, logSheet, trackingSheet, nextRow)
     FormatRequestsSheet requestsSheet
     FormatLogSheet logSheet
+    FormatRequestTrackingSheet trackingSheet
 
     ShowInfo CStr(mergedCount) & "건의 신청서를 통합했습니다."
 End Sub
@@ -514,8 +518,8 @@ Private Sub WriteSecuiCliRow( _
     secuiCliSheet.Cells(cliRow, 5).Value = reviewNote
     secuiCliSheet.Cells(cliRow, 6).Value = requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value
     secuiCliSheet.Cells(cliRow, 7).Value = requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value
-    secuiCliSheet.Cells(cliRow, 8).Value = requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value
-    secuiCliSheet.Cells(cliRow, 9).Value = requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value
+    secuiCliSheet.Cells(cliRow, 8).Value = RequestSourceFile(requestRow)
+    secuiCliSheet.Cells(cliRow, 9).Value = RequestSourceRow(requestRow)
 End Sub
 
 Private Sub WriteSecuiCliGroup( _
@@ -562,8 +566,8 @@ Private Sub WriteSecuiCliGroup( _
         SecuiDescription(requestsSheet, requestRow), _
         CStr(requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value), _
-        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value), _
-        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value), _
+        RequestSourceFile(requestRow), _
+        RequestSourceRow(requestRow), _
         CStr(requestsSheet.Cells(requestRow, COL_START_DATE).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_END_DATE).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_PURPOSE).Value), _
@@ -576,7 +580,7 @@ Private Sub WriteSecuiCliGroup( _
     secuiCliSheet.Cells(cliRow, 5).Value = reviewNote
     secuiCliSheet.Cells(cliRow, 6).Value = requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value
     secuiCliSheet.Cells(cliRow, 7).Value = requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value
-    secuiCliSheet.Cells(cliRow, 8).Value = requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value
+    secuiCliSheet.Cells(cliRow, 8).Value = RequestSourceFile(requestRow)
     secuiCliSheet.Cells(cliRow, 9).Value = JoinedDictionaryKeys(group("source_rows"), ";")
 End Sub
 
@@ -639,18 +643,7 @@ Private Function JoinedDictionaryKeys(ByVal values As Object, ByVal delimiter As
 End Function
 
 Private Function SecuiNetworkScopeToken(ByVal requestsSheet As Worksheet, ByVal group As Object) As String
-    Dim requestRow As Long
-    Dim sourceZone As String
-    Dim destinationZone As String
     Dim rangeScope As String
-
-    requestRow = CLng(group("request_row"))
-    sourceZone = CleanSecuiText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_ZONE).Value))
-    destinationZone = CleanSecuiText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_ZONE).Value))
-    If Len(sourceZone) > 0 Or Len(destinationZone) > 0 Then
-        SecuiNetworkScopeToken = SecuiObjectNameToken(sourceZone & "_TO_" & destinationZone)
-        Exit Function
-    End If
 
     rangeScope = CleanSecuiText(CStr(group("network_scope")))
     If Len(rangeScope) > 0 Then
@@ -700,10 +693,9 @@ End Function
 Private Function SecuiDirectionMatches(ByVal ruleDirection As String, ByVal requestDirection As String) As Boolean
     Dim ruleValue As String
     Dim requestValue As String
-    ruleValue = UCase$(Trim$(ruleDirection))
-    requestValue = UCase$(Trim$(requestDirection))
-    If Len(ruleValue) = 0 Then ruleValue = "BOTH"
-    If Len(requestValue) = 0 Then requestValue = "BOTH"
+    ruleValue = NormalizeDirection(ruleDirection)
+    requestValue = NormalizeDirection(requestDirection)
+    If ruleValue = "#INVALID" Or requestValue = "#INVALID" Then Exit Function
     If ruleValue = "BOTH" Or requestValue = "BOTH" Then
         SecuiDirectionMatches = True
     Else
@@ -852,8 +844,8 @@ Private Function SecuiCliCommand( _
         SecuiDescription(requestsSheet, requestRow), _
         CStr(requestsSheet.Cells(requestRow, COL_REQUEST_TEAM).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_REQUEST_DOC_NO).Value), _
-        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_FILE).Value), _
-        CStr(requestsSheet.Cells(requestRow, COL_SOURCE_ROW).Value), _
+        RequestSourceFile(requestRow), _
+        RequestSourceRow(requestRow), _
         CStr(requestsSheet.Cells(requestRow, COL_START_DATE).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_END_DATE).Value), _
         CStr(requestsSheet.Cells(requestRow, COL_PURPOSE).Value), _
@@ -968,7 +960,6 @@ Private Function SecuiDescription(ByVal requestsSheet As Worksheet, ByVal reques
     Dim descText As String
     descText = AppendToken(descText, CStr(requestsSheet.Cells(requestRow, COL_PURPOSE).Value), " / ")
     descText = AppendToken(descText, CStr(requestsSheet.Cells(requestRow, COL_NOTE).Value), " / ")
-    descText = AppendToken(descText, CStr(requestsSheet.Cells(requestRow, COL_VALIDATION_STATUS).Value), " / ")
     SecuiDescription = Left$(CleanSecuiText(descText), 255)
 End Function
 
@@ -1012,12 +1003,13 @@ Private Function MergeFolderFiles( _
         ByVal requestsSheet As Worksheet, _
         ByVal firewallsSheet As Worksheet, _
         ByVal logSheet As Worksheet, _
+        ByVal trackingSheet As Worksheet, _
         ByRef nextRow As Long) As Long
     ' Recurse subfolders so each team folder (e.g. 정보보호센터_1234) is scanned.
     Dim mergedCount As Long
     Dim folderName As String
     folderName = FolderLeafName(folderPath)
-    mergedCount = MergeFolderTree(folderPath, folderName, requestsSheet, firewallsSheet, logSheet, nextRow)
+    mergedCount = MergeFolderTree(folderPath, folderName, requestsSheet, firewallsSheet, logSheet, trackingSheet, nextRow)
     MergeFolderFiles = mergedCount
 End Function
 
@@ -1027,6 +1019,7 @@ Private Function MergeFolderTree( _
         ByVal requestsSheet As Worksheet, _
         ByVal firewallsSheet As Worksheet, _
         ByVal logSheet As Worksheet, _
+        ByVal trackingSheet As Worksheet, _
         ByRef nextRow As Long) As Long
     Dim fileName As String
     Dim mergedCount As Long
@@ -1038,7 +1031,7 @@ Private Function MergeFolderTree( _
     Do While Len(fileName) > 0
         If Left$(fileName, 2) <> "~$" Then
             If StrComp(folderPath & Application.PathSeparator & fileName, ThisWorkbook.FullName, vbTextCompare) <> 0 Then
-                mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, folderName, requestsSheet, firewallsSheet, logSheet, nextRow)
+                mergedCount = mergedCount + MergeWorkbookFile(folderPath & Application.PathSeparator & fileName, fileName, folderName, requestsSheet, firewallsSheet, logSheet, trackingSheet, nextRow)
             End If
         End If
         fileName = Dir()
@@ -1052,7 +1045,7 @@ Private Function MergeFolderTree( _
         ' team_doc_title name instead of being parsed as '첨부파일'.
         Dim childContext As String
         childContext = ChildFolderContext(folderName, CStr(subName))
-        mergedCount = mergedCount + MergeFolderTree(folderPath & Application.PathSeparator & CStr(subName), childContext, requestsSheet, firewallsSheet, logSheet, nextRow)
+        mergedCount = mergedCount + MergeFolderTree(folderPath & Application.PathSeparator & CStr(subName), childContext, requestsSheet, firewallsSheet, logSheet, trackingSheet, nextRow)
     Next subName
 
     MergeFolderTree = mergedCount
@@ -1131,6 +1124,7 @@ Private Function MergeWorkbookFile( _
         ByVal requestsSheet As Worksheet, _
         ByVal firewallsSheet As Worksheet, _
         ByVal logSheet As Worksheet, _
+        ByVal trackingSheet As Worksheet, _
         ByRef nextRow As Long) As Long
     Dim sourceBook As Workbook
     Dim sourceSheet As Worksheet
@@ -1154,7 +1148,7 @@ Private Function MergeWorkbookFile( _
     For rowIndex = headerRow + 1 To lastRow
         If RequestSourceRowHasData(sourceSheet, rowIndex, headerMap) Then
             ' CopyRequestRow explodes one source row into N rules and advances nextRow.
-            mergedCount = mergedCount + CopyRequestRow(sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, nextRow, sourceFileName, folderName)
+            mergedCount = mergedCount + CopyRequestRow(sourceSheet, rowIndex, headerMap, requestsSheet, firewallsSheet, trackingSheet, nextRow, sourceFileName, folderName)
         End If
     Next rowIndex
 
@@ -1180,6 +1174,7 @@ Private Function CopyRequestRow( _
         ByVal headerMap As Object, _
         ByVal requestsSheet As Worksheet, _
         ByVal firewallsSheet As Worksheet, _
+        ByVal trackingSheet As Worksheet, _
         ByRef targetRow As Long, _
         ByVal sourceFileName As String, _
         ByVal folderName As String) As Long
@@ -1212,9 +1207,6 @@ Private Function CopyRequestRow( _
             For k = LBound(ports) To UBound(ports)
                 requestsSheet.Cells(targetRow, COL_REQUEST_TEAM).Value = reqTeam
                 requestsSheet.Cells(targetRow, COL_REQUEST_DOC_NO).Value = reqDocNo
-                requestsSheet.Cells(targetRow, COL_REQUEST_TITLE).Value = reqTitle
-                requestsSheet.Cells(targetRow, COL_SOURCE_FILE).Value = sourceFileName
-                requestsSheet.Cells(targetRow, COL_SOURCE_ROW).Value = sourceRow
                 requestsSheet.Cells(targetRow, COL_TARGET_FIREWALLS).Value = targetFirewalls
                 requestsSheet.Cells(targetRow, COL_SOURCE_IP).Value = srcs(i)
                 requestsSheet.Cells(targetRow, COL_SOURCE_NAME).Value = srcName
@@ -1227,7 +1219,7 @@ Private Function CopyRequestRow( _
                 requestsSheet.Cells(targetRow, COL_START_DATE).Value = startDate
                 requestsSheet.Cells(targetRow, COL_END_DATE).Value = endDate
                 requestsSheet.Cells(targetRow, COL_NOTE).Value = note
-                requestsSheet.Cells(targetRow, COL_REQUEST_FOLDER).Value = folderName
+                WriteRequestTrackingRow trackingSheet, targetRow, sourceFileName, sourceRow, folderName, reqTitle
                 targetRow = targetRow + 1
                 written = written + 1
             Next k
@@ -1251,13 +1243,13 @@ Private Function SplitNormalizedList(ByVal normalized As String) As String()
     SplitNormalizedList = Split(s, ";")
 End Function
 
-' Vertically merge the identity cells (요청부서/요청번호/제목) across a contiguous
+' Vertically merge the identity cells (요청부서/요청번호) across a contiguous
 ' output block [firstRow..lastRow] so same-document rows read as one group.
 ' IP/포트 cells are NEVER merged (route + duplicate detection need per-row values).
 Private Sub MergeIdentityBlock(ByVal worksheet As Worksheet, ByVal firstRow As Long, ByVal lastRow As Long)
     If lastRow <= firstRow Then Exit Sub
     Dim cols As Variant, c As Variant
-    cols = Array(COL_REQUEST_TEAM, COL_REQUEST_DOC_NO, COL_REQUEST_TITLE)
+    cols = Array(COL_REQUEST_TEAM, COL_REQUEST_DOC_NO)
     Application.DisplayAlerts = False
     For Each c In cols
         With worksheet.Range(worksheet.Cells(firstRow, CLng(c)), worksheet.Cells(lastRow, CLng(c)))
@@ -1713,42 +1705,6 @@ Private Function FormatMetadataDate(ByVal value As Variant) As String
     End If
 End Function
 
-Private Sub WriteRowValidation(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
-    Dim messageText As String
-
-    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_SOURCE_IP).Value))) = 0 Then messageText = AppendMessageText(messageText, "출발지IP 비어 있음")
-    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_DESTINATION_IP).Value))) = 0 Then messageText = AppendMessageText(messageText, "목적지IP 비어 있음")
-    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_PROTOCOL).Value))) = 0 Then messageText = AppendMessageText(messageText, "프로토콜 비어 있음")
-    If Len(Trim$(CStr(worksheet.Cells(rowIndex, COL_PORT).Value))) = 0 Then messageText = AppendMessageText(messageText, "포트 비어 있음")
-
-    If Len(messageText) > 0 Then
-        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = "WARN"
-        worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value = messageText
-        worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Interior.Color = RGB(255, 235, 156)
-    Else
-        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = "OK"
-    End If
-End Sub
-
-Private Sub AppendValidationMessage( _
-        ByVal worksheet As Worksheet, _
-        ByVal rowIndex As Long, _
-        ByVal statusText As String, _
-        ByVal messageText As String)
-    Dim currentStatus As String
-    Dim currentMessage As String
-
-    currentStatus = Trim$(CStr(worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value))
-    currentMessage = Trim$(CStr(worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value))
-
-    If currentStatus = "OK" Or Len(currentStatus) = 0 Then
-        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = statusText
-    ElseIf InStr(1, currentStatus, statusText, vbTextCompare) = 0 Then
-        worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Value = currentStatus & ";" & statusText
-    End If
-    worksheet.Cells(rowIndex, COL_VALIDATION_MESSAGE).Value = AppendMessageText(currentMessage, messageText)
-End Sub
-
 Private Function AppendMessageText(ByVal currentText As String, ByVal newText As String) As String
     If Len(currentText) = 0 Then
         AppendMessageText = newText
@@ -1764,6 +1720,48 @@ End Function
 Private Sub WriteLogHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:E1").Value = Array("processed_at", "source_file", "status", "merged_rows", "message")
 End Sub
+
+Private Sub WriteRequestTrackingHeaders(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:E1").Value = Array("request_row", "원본파일", "원본행", "요청폴더", "제목")
+End Sub
+
+Private Sub WriteRequestTrackingRow( _
+        ByVal worksheet As Worksheet, _
+        ByVal requestRow As Long, _
+        ByVal sourceFileName As String, _
+        ByVal sourceRow As Long, _
+        ByVal folderName As String, _
+        ByVal requestTitle As String)
+    Dim trackingRow As Long
+    trackingRow = worksheet.Cells(worksheet.Rows.Count, TCOL_REQUEST_ROW).End(xlUp).Row + 1
+    worksheet.Cells(trackingRow, TCOL_REQUEST_ROW).Value = requestRow
+    worksheet.Cells(trackingRow, TCOL_SOURCE_FILE).Value = sourceFileName
+    worksheet.Cells(trackingRow, TCOL_SOURCE_ROW).Value = sourceRow
+    worksheet.Cells(trackingRow, TCOL_REQUEST_FOLDER).Value = folderName
+    worksheet.Cells(trackingRow, TCOL_REQUEST_TITLE).Value = requestTitle
+End Sub
+
+Private Function RequestTrackingValue(ByVal requestRow As Long, ByVal trackingColumn As Long) As String
+    Dim trackingSheet As Worksheet
+    Dim lastRow As Long
+    Dim rowIndex As Long
+    Set trackingSheet = EnsureSheet(REQUEST_TRACKING_SHEET)
+    lastRow = trackingSheet.Cells(trackingSheet.Rows.Count, TCOL_REQUEST_ROW).End(xlUp).Row
+    For rowIndex = 2 To lastRow
+        If CLng(Val(CStr(trackingSheet.Cells(rowIndex, TCOL_REQUEST_ROW).Value))) = requestRow Then
+            RequestTrackingValue = CStr(trackingSheet.Cells(rowIndex, trackingColumn).Value)
+            Exit Function
+        End If
+    Next rowIndex
+End Function
+
+Private Function RequestSourceFile(ByVal requestRow As Long) As String
+    RequestSourceFile = RequestTrackingValue(requestRow, TCOL_SOURCE_FILE)
+End Function
+
+Private Function RequestSourceRow(ByVal requestRow As Long) As String
+    RequestSourceRow = RequestTrackingValue(requestRow, TCOL_SOURCE_ROW)
+End Function
 
 Private Sub WriteRouteResultsHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:S1").Value = Array("요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "원본파일", "원본행")
@@ -1820,6 +1818,11 @@ Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
     worksheet.Rows(1).Font.Bold = True
 End Sub
 
+Private Sub FormatRequestTrackingSheet(ByVal worksheet As Worksheet)
+    SafeAutoFitColumns worksheet, "A:E"
+    worksheet.Rows(1).Font.Bold = True
+End Sub
+
 Private Sub FormatRouteResultsSheet(ByVal worksheet As Worksheet)
     SafeAutoFitColumns worksheet, "A:S"
     worksheet.Rows(1).Font.Bold = True
@@ -1832,36 +1835,6 @@ Private Sub FormatSecuiCliSheet(ByVal worksheet As Worksheet)
         worksheet.Columns(c).ColumnWidth = widths(c - 1)
     Next c
     worksheet.Rows(1).Font.Bold = True
-End Sub
-
-Private Sub MarkDuplicateRequests(ByVal worksheet As Worksheet)
-    Dim seen As Object
-    Dim lastRow As Long
-    Dim rowIndex As Long
-    Dim duplicateKey As String
-
-    Set seen = CreateObject("Scripting.Dictionary")
-    lastRow = worksheet.Cells(worksheet.Rows.Count, COL_SOURCE_IP).End(xlUp).Row
-    For rowIndex = REQ_DATA_START_ROW To lastRow
-        duplicateKey = RequestDuplicateKey(worksheet, rowIndex)
-        If Len(duplicateKey) > 0 Then
-            If seen.Exists(duplicateKey) Then
-                HighlightDuplicateRow worksheet, rowIndex
-                HighlightDuplicateRow worksheet, CLng(seen(duplicateKey))
-                AppendValidationMessage worksheet, rowIndex, "DUPLICATE", "중복 후보: " & CStr(seen(duplicateKey)) & "행"
-                AppendValidationMessage worksheet, CLng(seen(duplicateKey)), "DUPLICATE", "중복 후보: " & CStr(rowIndex) & "행"
-            Else
-                seen.Add duplicateKey, rowIndex
-            End If
-        End If
-    Next rowIndex
-End Sub
-
-Private Sub HighlightDuplicateRow(ByVal worksheet As Worksheet, ByVal rowIndex As Long)
-    Dim statusColor As Variant
-    statusColor = worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Interior.Color
-    worksheet.Rows(rowIndex).Interior.Color = RGB(255, 230, 153)
-    worksheet.Cells(rowIndex, COL_VALIDATION_STATUS).Interior.Color = statusColor
 End Sub
 
 Private Function RequestDuplicateKey(ByVal worksheet As Worksheet, ByVal rowIndex As Long) As String
@@ -1897,6 +1870,7 @@ Private Sub ApplyOperatorSheetVisibility()
     SetSheetVisibility LOG_SHEET, SHEET_HIDDEN
     SetSheetVisibility SERVICE_CATALOG_SHEET, SHEET_HIDDEN
     SetSheetVisibility "sample-request-format", SHEET_HIDDEN
+    SetSheetVisibility REQUEST_TRACKING_SHEET, SHEET_HIDDEN
 End Sub
 
 Private Sub SetSheetVisibility(ByVal sheetName As String, ByVal visibility As Long)
@@ -1907,14 +1881,14 @@ End Sub
 
 Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
     ' Row 1: cosmetic group labels (출발지 over IP+설명, 목적지 over IP+설명).
-    ' Row 2: canonical leaf headers (25). Data starts at row 3.
+    ' Row 2: canonical leaf headers (14). Data starts at row 3.
     worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP).Value = "출발지"
     worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP).Value = "목적지"
     Application.DisplayAlerts = False
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_NAME)).Merge
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_NAME)).Merge
     Application.DisplayAlerts = True
-    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
+    worksheet.Range("A" & REQ_HEADER_ROW & ":N" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)
@@ -1953,7 +1927,7 @@ End Sub
 
 Private Sub FormatRequestsSheet(ByVal worksheet As Worksheet)
     Dim widths As Variant, c As Long
-    widths = Array(16, 12, 20, 28, 8, 18, 32, 18, 16, 18, 16, 10, 14, 10, 28, 12, 12, 24, 40, 34, 18, 18, 30, 60, 24)
+    widths = Array(16, 12, 32, 18, 16, 18, 16, 10, 14, 10, 28, 12, 12, 24)
     For c = 1 To REQ_LAST_COL
         worksheet.Columns(c).ColumnWidth = widths(c - 1)
     Next c

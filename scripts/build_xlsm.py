@@ -34,6 +34,8 @@ from scripts.workbook_contract import (
     FREEZE_PANES,
     HEADER_ALIASES,
     PROCESSING_LOG,
+    REQUEST_TRACKING_HEADERS,
+    REQUEST_TRACKING_SHEET,
     REQUESTS_HEADERS,
     ROUTE_RESULTS_HEADERS,
     SAMPLE_FORMAT,
@@ -203,11 +205,20 @@ def main() -> int:
     base.merge_cells(f"{_gcl(dst_ip_col)}{_REQ_HEADER_GROUP_ROW}:{_gcl(dst_desc_col)}{_REQ_HEADER_GROUP_ROW}")
     for c, h in enumerate(REQUESTS_HEADERS, start=1):
         base.cell(row=_REQ_HEADER_ROW, column=c, value=h)
-    # seeded example requests (single IP + CIDR), one per row starting at data row
+    tracking_rows: list[list[object]] = [list(REQUEST_TRACKING_HEADERS)]
     for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=_REQ_DATA_START_ROW):
-        for key, val in example.items():
-            header_key = {"출발지IP": "출발지", "목적지IP": "목적지"}.get(key, key)
-            base.cell(row=r, column=col_index[header_key], value=val)
+        for header in REQUESTS_HEADERS:
+            example_key = {"출발지": "출발지IP", "목적지": "목적지IP"}.get(header, header)
+            val = example.get(example_key)
+            if val is not None:
+                base.cell(row=r, column=col_index[header], value=val)
+        tracking_rows.append([
+            r,
+            example.get("원본파일", ""),
+            example.get("원본행", ""),
+            example.get("요청폴더", ""),
+            example.get("제목", ""),
+        ])
     # style the group label row too, then the leaf header row
     for c in (src_ip_col, dst_ip_col):
         gc = base.cell(row=_REQ_HEADER_GROUP_ROW, column=c)
@@ -227,6 +238,7 @@ def main() -> int:
     add("settings", SETTINGS)
     add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)
+    add(REQUEST_TRACKING_SHEET, tracking_rows)
     add("route_results", [ROUTE_RESULTS_HEADERS])
     add("secui_cli", secui_cli_seed_rows())
     add("vendor_cli_templates", VENDOR_CLI_TEMPLATES)

@@ -4,28 +4,23 @@ Option Explicit
 Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
 Private Const REQUESTS_SHEET As String = "requests"
+Private Const REQUEST_TRACKING_SHEET As String = "_request_tracking"
 Private Const ROUTE_RESULTS_SHEET As String = "route_results"
 
 Private Const REQ_DATA_START_ROW As Long = 3
 Private Const RCOL_TEAM As Long = 1
 Private Const RCOL_DOC_NO As Long = 2
-Private Const RCOL_SOURCE_FILE As Long = 4
-Private Const RCOL_SOURCE_ROW As Long = 5
-Private Const RCOL_VALID_STATUS As Long = 6
-Private Const RCOL_TARGET As Long = 7
-Private Const RCOL_SOURCE_IP As Long = 8
-Private Const RCOL_SOURCE_NAME As Long = 9
-Private Const RCOL_DEST_IP As Long = 10
-Private Const RCOL_DEST_NAME As Long = 11
-Private Const RCOL_PROTOCOL As Long = 12
-Private Const RCOL_PORT As Long = 13
-Private Const RCOL_DIRECTION As Long = 14
-Private Const RCOL_VALID_MSG As Long = 19
-Private Const RCOL_FW_PATH As Long = 20
-Private Const RCOL_SRC_ZONE As Long = 21
-Private Const RCOL_DST_ZONE As Long = 22
-Private Const RCOL_ZONE_PATH As Long = 23
-Private Const RCOL_MATCH As Long = 24
+Private Const RCOL_TARGET As Long = 3
+Private Const RCOL_SOURCE_IP As Long = 4
+Private Const RCOL_SOURCE_NAME As Long = 5
+Private Const RCOL_DEST_IP As Long = 6
+Private Const RCOL_DEST_NAME As Long = 7
+Private Const RCOL_PROTOCOL As Long = 8
+Private Const RCOL_PORT As Long = 9
+Private Const RCOL_DIRECTION As Long = 10
+Private Const TCOL_REQUEST_ROW As Long = 1
+Private Const TCOL_SOURCE_FILE As Long = 2
+Private Const TCOL_SOURCE_ROW As Long = 3
 
 Private mEnabledFw As Object
 Private mRanges As Collection
@@ -37,8 +32,10 @@ Public Sub AnalyzeRequestRoutes(Optional ByVal showMessage As Boolean = True)
     Dim rowIndex As Long
     Dim analyzed As Long
     Dim res As Object
+    Dim routeResults As Object
 
     Set requestsSheet = ThisWorkbook.Worksheets(REQUESTS_SHEET)
+    Set routeResults = CreateObject("Scripting.Dictionary")
     LoadRouteData
 
     lastRow = requestsSheet.Cells(requestsSheet.Rows.Count, RCOL_SOURCE_IP).End(xlUp).Row
@@ -54,19 +51,21 @@ Public Sub AnalyzeRequestRoutes(Optional ByVal showMessage As Boolean = True)
         direction = Trim$(CStr(requestsSheet.Cells(rowIndex, RCOL_DIRECTION).Value))
         If Len(srcIp) > 0 Or Len(dstIp) > 0 Then
             Set res = AnalyzeRoute(srcIp, dstIp, direction)
+            Set routeResults(CStr(rowIndex)) = res
             WriteResultRow requestsSheet, rowIndex, res
             analyzed = analyzed + 1
         End If
     Next rowIndex
 
-    RefreshRouteResults requestsSheet, lastRow
+    RefreshRouteResults requestsSheet, lastRow, routeResults
     If showMessage Then MsgBox CStr(analyzed) & "건의 신청서 방화벽 대역을 분석했습니다.", vbInformation
 End Sub
 
-Private Sub RefreshRouteResults(ByVal requestsSheet As Worksheet, ByVal lastRow As Long)
+Private Sub RefreshRouteResults(ByVal requestsSheet As Worksheet, ByVal lastRow As Long, ByVal routeResults As Object)
     Dim routeSheet As Worksheet
     Dim requestRow As Long
     Dim outputRow As Long
+    Dim res As Object
 
     Set routeSheet = EnsureRouteResultsSheet()
     WriteRouteResultsHeaders routeSheet
@@ -86,15 +85,18 @@ Private Sub RefreshRouteResults(ByVal requestsSheet As Worksheet, ByVal lastRow 
             routeSheet.Cells(outputRow, 8).Value = requestsSheet.Cells(requestRow, RCOL_PORT).Value
             routeSheet.Cells(outputRow, 9).Value = requestsSheet.Cells(requestRow, RCOL_DIRECTION).Value
             routeSheet.Cells(outputRow, 10).Value = requestsSheet.Cells(requestRow, RCOL_TARGET).Value
-            routeSheet.Cells(outputRow, 11).Value = requestsSheet.Cells(requestRow, RCOL_VALID_STATUS).Value
-            routeSheet.Cells(outputRow, 12).Value = requestsSheet.Cells(requestRow, RCOL_VALID_MSG).Value
-            routeSheet.Cells(outputRow, 13).Value = requestsSheet.Cells(requestRow, RCOL_FW_PATH).Value
-            routeSheet.Cells(outputRow, 14).Value = requestsSheet.Cells(requestRow, RCOL_SRC_ZONE).Value
-            routeSheet.Cells(outputRow, 15).Value = requestsSheet.Cells(requestRow, RCOL_DST_ZONE).Value
-            routeSheet.Cells(outputRow, 16).Value = requestsSheet.Cells(requestRow, RCOL_ZONE_PATH).Value
-            routeSheet.Cells(outputRow, 17).Value = requestsSheet.Cells(requestRow, RCOL_MATCH).Value
-            routeSheet.Cells(outputRow, 18).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_FILE).Value
-            routeSheet.Cells(outputRow, 19).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_ROW).Value
+            If routeResults.Exists(CStr(requestRow)) Then
+                Set res = routeResults(CStr(requestRow))
+                routeSheet.Cells(outputRow, 11).Value = res("status")
+                routeSheet.Cells(outputRow, 12).Value = res("validation_message")
+                routeSheet.Cells(outputRow, 13).Value = res("firewall_path")
+                routeSheet.Cells(outputRow, 14).Value = res("source_zone")
+                routeSheet.Cells(outputRow, 15).Value = res("destination_zone")
+                routeSheet.Cells(outputRow, 16).Value = res("zone_path")
+                routeSheet.Cells(outputRow, 17).Value = res("match_details")
+            End If
+            routeSheet.Cells(outputRow, 18).Value = RequestTrackingValue(requestRow, TCOL_SOURCE_FILE)
+            routeSheet.Cells(outputRow, 19).Value = RequestTrackingValue(requestRow, TCOL_SOURCE_ROW)
             outputRow = outputRow + 1
         End If
     Next requestRow
@@ -112,6 +114,30 @@ Private Function EnsureRouteResultsSheet() As Worksheet
     End If
 End Function
 
+Private Function RequestTrackingValue(ByVal requestRow As Long, ByVal trackingColumn As Long) As String
+    Dim trackingSheet As Worksheet
+    Dim lastRow As Long
+    Dim rowIndex As Long
+    Set trackingSheet = EnsureRequestTrackingSheet()
+    lastRow = trackingSheet.Cells(trackingSheet.Rows.Count, TCOL_REQUEST_ROW).End(xlUp).Row
+    For rowIndex = 2 To lastRow
+        If CLng(Val(CStr(trackingSheet.Cells(rowIndex, TCOL_REQUEST_ROW).Value))) = requestRow Then
+            RequestTrackingValue = CStr(trackingSheet.Cells(rowIndex, trackingColumn).Value)
+            Exit Function
+        End If
+    Next rowIndex
+End Function
+
+Private Function EnsureRequestTrackingSheet() As Worksheet
+    On Error Resume Next
+    Set EnsureRequestTrackingSheet = ThisWorkbook.Worksheets(REQUEST_TRACKING_SHEET)
+    On Error GoTo 0
+    If EnsureRequestTrackingSheet Is Nothing Then
+        Set EnsureRequestTrackingSheet = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        EnsureRequestTrackingSheet.Name = REQUEST_TRACKING_SHEET
+    End If
+End Function
+
 Private Sub WriteRouteResultsHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:S1").Value = Array("요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "원본파일", "원본행")
 End Sub
@@ -119,25 +145,12 @@ End Sub
 Private Sub WriteResultRow(ByVal sheet As Worksheet, ByVal rowIndex As Long, ByVal res As Object)
     Dim targetCell As Range
     Set targetCell = sheet.Cells(rowIndex, RCOL_TARGET)
-    targetCell.Value = res("target_firewalls")
-    sheet.Cells(rowIndex, RCOL_FW_PATH).Value = res("firewall_path")
-    sheet.Cells(rowIndex, RCOL_SRC_ZONE).Value = res("source_zone")
-    sheet.Cells(rowIndex, RCOL_DST_ZONE).Value = res("destination_zone")
-    sheet.Cells(rowIndex, RCOL_ZONE_PATH).Value = res("zone_path")
-    sheet.Cells(rowIndex, RCOL_VALID_STATUS).Value = res("status")
-    sheet.Cells(rowIndex, RCOL_VALID_MSG).Value = res("validation_message")
-    sheet.Cells(rowIndex, RCOL_MATCH).Value = res("match_details")
-
-    Dim c As Range
-    Set c = sheet.Cells(rowIndex, RCOL_VALID_STATUS)
+    If Len(Trim$(CStr(targetCell.Value))) = 0 Then targetCell.Value = res("target_firewalls")
     If res("status") = "OK" Then
-        c.Interior.Color = RGB(198, 239, 206)
         targetCell.Interior.Color = RGB(217, 234, 211)
     ElseIf res("status") = "DIRECTION_MISMATCH" Then
-        c.Interior.Color = RGB(255, 235, 156)
         targetCell.Interior.Color = RGB(255, 242, 204)
     Else
-        c.Interior.Color = RGB(255, 199, 206)
         targetCell.Interior.Color = RGB(255, 230, 230)
     End If
 End Sub
@@ -263,7 +276,7 @@ Private Function DirectionMatches(ByVal ruleDirection As String, ByVal flowDirec
     End If
 End Function
 
-Private Function NormalizeDirection(ByVal direction As String) As String
+Public Function NormalizeDirection(ByVal direction As String) As String
     Dim value As String
     value = UCase$(Trim$(direction))
     If Len(value) = 0 Then
@@ -271,8 +284,59 @@ Private Function NormalizeDirection(ByVal direction As String) As String
     ElseIf value = "IN" Or value = "OUT" Or value = "BOTH" Then
         NormalizeDirection = value
     Else
-        NormalizeDirection = "#INVALID"
+        NormalizeDirection = NormalizeDirectionSynonym(value)
     End If
+End Function
+
+Private Function NormalizeDirectionSynonym(ByVal value As String) As String
+    ' value is already UCase$ + Trim$. Blank/IN/OUT/BOTH handled by caller.
+    Select Case value
+        Case "INBOUND", "인바운드", "수신"
+            NormalizeDirectionSynonym = "IN"
+        Case "OUTBOUND", "아웃바운드", "송신"
+            NormalizeDirectionSynonym = "OUT"
+        Case "ANY", "ALL", "양방향", "양방", "쌍방향", "BIDIRECTIONAL", "BI-DIRECTIONAL"
+            NormalizeDirectionSynonym = "BOTH"
+        Case Else
+            NormalizeDirectionSynonym = NormalizeDirectionArrowPhrase(value)
+    End Select
+End Function
+
+Private Function NormalizeDirectionArrowPhrase(ByVal value As String) As String
+    Dim canonical As String
+    Dim src As String
+    Dim dst As String
+    Dim pos As Long
+    canonical = Replace(value, Chr$(&H2192), ">")
+    canonical = Replace(canonical, "->", ">")
+    canonical = Replace(canonical, "-", ">")
+    pos = InStr(canonical, ">")
+    If pos = 0 Then
+        NormalizeDirectionArrowPhrase = "#INVALID"
+        Exit Function
+    End If
+    src = Trim$(Left$(canonical, pos - 1))
+    dst = Trim$(Mid$(canonical, pos + 1))
+    ' Reject 3+ token phrases (e.g. A>B>C) so only a clean pair resolves.
+    If InStr(dst, ">") > 0 Then
+        NormalizeDirectionArrowPhrase = "#INVALID"
+        Exit Function
+    End If
+    If IsOutsideToken(src) And IsInsideToken(dst) Then
+        NormalizeDirectionArrowPhrase = "IN"
+    ElseIf IsInsideToken(src) And IsOutsideToken(dst) Then
+        NormalizeDirectionArrowPhrase = "OUT"
+    Else
+        NormalizeDirectionArrowPhrase = "#INVALID"
+    End If
+End Function
+
+Private Function IsInsideToken(ByVal token As String) As Boolean
+    IsInsideToken = (token = "내부" Or token = "INSIDE" Or token = "INTERNAL")
+End Function
+
+Private Function IsOutsideToken(ByVal token As String) As Boolean
+    IsOutsideToken = (token = "외부" Or token = "OUTSIDE" Or token = "EXTERNAL")
 End Function
 
 Private Function AddressListOverlaps(ByVal requestValue As String, ByVal definitionValue As String) As Boolean

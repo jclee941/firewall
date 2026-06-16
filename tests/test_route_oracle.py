@@ -138,3 +138,118 @@ def test_invalid_direction(engine):
 
     assert result.status == "DIRECTION_MISMATCH"
     assert "Invalid direction" in result.validation_message
+
+# ---------------------------------------------------------------------------
+# Direction synonym normalization spec
+# ---------------------------------------------------------------------------
+# normalize_direction must accept Korean / business direction labels, not just
+# IN/OUT/BOTH. These tests are expected to FAIL RED until the synonym mapping is
+# implemented in tests/route_oracle.py. Regression cases (IN/OUT/BOTH canonical,
+# garbage) must continue to pass.
+
+
+IN_DIRECTION_SYNONYMS = [
+    "IN",
+    "in",
+    "INBOUND",
+    "inbound",
+    "인바운드",
+    "수신",
+    "외부->내부",
+    "외부→내부",
+    "외부-내부",
+    "outside->inside",
+    "external->internal",
+]
+
+OUT_DIRECTION_SYNONYMS = [
+    "OUT",
+    "out",
+    "OUTBOUND",
+    "outbound",
+    "아웃바운드",
+    "송신",
+    "내부->외부",
+    "내부→외부",
+    "내부-외부",
+    "inside->outside",
+    "internal->external",
+]
+
+BOTH_DIRECTION_SYNONYMS = [
+    "",  # blank
+    "BOTH",
+    "ANY",
+    "ALL",
+    "양방향",
+    "양방",
+    "쌍방향",
+    "bidirectional",
+    "bi-directional",
+]
+
+INVALID_DIRECTION_SYNONYMS = [
+    "asdf",
+    "좌우",
+    "내부",  # standalone, not part of a directional phrase
+    "외부",  # standalone, not part of a directional phrase
+]
+
+
+@pytest.mark.parametrize("text", IN_DIRECTION_SYNONYMS)
+def test_normalize_direction_in_synonyms(text):
+    assert RouteEngine.normalize_direction(text) == "IN"
+
+
+@pytest.mark.parametrize("text", OUT_DIRECTION_SYNONYMS)
+def test_normalize_direction_out_synonyms(text):
+    assert RouteEngine.normalize_direction(text) == "OUT"
+
+
+@pytest.mark.parametrize("text", BOTH_DIRECTION_SYNONYMS)
+def test_normalize_direction_both_synonyms(text):
+    assert RouteEngine.normalize_direction(text) == "BOTH"
+
+
+@pytest.mark.parametrize("text", INVALID_DIRECTION_SYNONYMS)
+def test_normalize_direction_garbage_remains_invalid(text):
+    assert RouteEngine.normalize_direction(text) == "#INVALID"
+
+
+def test_analyze_outbound_korean_resolves_against_out_ranges(engine):
+    # Seeded engine has (10.10.0.0/16 -> 10.20.0.0/16) OUT for SECUI-FW-01.
+    result = engine.analyze("10.10.10.5", "10.20.20.5", "아웃바운드")
+
+    assert result.status == "OK"
+    assert "SECUI-FW-01" in result.target_firewalls.split(";")
+
+
+def test_analyze_inbound_korean_against_out_only_definition_is_direction_mismatch():
+    # Only an OUT definition exists for this flow; an inbound (인바운드) request over
+    # the same pair must be flagged DIRECTION_MISMATCH, not silently OK.
+    out_only_engine = RouteEngine(
+        firewalls=[Firewall("SECUI-FW-01", vendor="SECUI")],
+        firewall_ranges=[
+            FirewallRange("SECUI-FW-01", "10.10.0.0/16", "10.20.0.0/16", "OUT", 10),
+        ],
+    )
+
+    result = out_only_engine.analyze("10.20.20.5", "10.10.10.5", "인바운드")
+
+    assert result.status == "DIRECTION_MISMATCH"
+
+
+def test_analyze_inbound_korean_resolves_against_in_range():
+    # Seeded engine has no IN range, so use a small dedicated engine: traffic from
+    # external 10.20 to internal 10.10, IN direction, must match SECUI-FW-01.
+    inbound_engine = RouteEngine(
+        firewalls=[Firewall("SECUI-FW-01", vendor="SECUI")],
+        firewall_ranges=[
+            FirewallRange("SECUI-FW-01", "10.20.0.0/16", "10.10.0.0/16", "IN", 10),
+        ],
+    )
+
+    result = inbound_engine.analyze("10.20.20.5", "10.10.10.5", "인바운드")
+
+    assert result.status == "OK"
+    assert "SECUI-FW-01" in result.target_firewalls.split(";")

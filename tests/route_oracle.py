@@ -80,6 +80,47 @@ def split_address_list(text: str | None) -> list[str]:
     return [part.strip() for part in normalized.split(";") if part.strip()]
 
 
+_DIRECTION_IN_WORDS = ("IN", "INBOUND", "인바운드", "수신")
+_DIRECTION_OUT_WORDS = ("OUT", "OUTBOUND", "아웃바운드", "송신")
+_DIRECTION_BOTH_WORDS = (
+    "BOTH", "ANY", "ALL", "양방향", "양방", "쌍방향",
+    "BIDIRECTIONAL", "BI-DIRECTIONAL",
+)
+_DIRECTION_INSIDE_TOKENS = ("내부", "INSIDE", "INTERNAL")
+_DIRECTION_OUTSIDE_TOKENS = ("외부", "OUTSIDE", "EXTERNAL")
+
+
+def _normalize_direction_synonym(value: str) -> str:
+    """Map Korean/business direction labels onto IN/OUT/BOTH or #INVALID.
+
+    ``value`` is already uppercased and trimmed. Blank/IN/OUT/BOTH are handled
+    by the caller. Arrow phrases (외부->내부, internal->external, 내부-외부, ...)
+    resolve by flow direction; a standalone 내부/외부 stays #INVALID.
+    """
+    if value in _DIRECTION_IN_WORDS:
+        return "IN"
+    if value in _DIRECTION_OUT_WORDS:
+        return "OUT"
+    if value in _DIRECTION_BOTH_WORDS:
+        return "BOTH"
+    return _normalize_direction_arrow_phrase(value)
+
+
+def _normalize_direction_arrow_phrase(value: str) -> str:
+    canonical = (
+        value.replace("\u2192", ">").replace("->", ">").replace("-", ">")
+    )
+    parts = [part.strip() for part in canonical.split(">") if part.strip()]
+    if len(parts) != 2:
+        return "#INVALID"
+    src, dst = parts
+    if src in _DIRECTION_OUTSIDE_TOKENS and dst in _DIRECTION_INSIDE_TOKENS:
+        return "IN"
+    if src in _DIRECTION_INSIDE_TOKENS and dst in _DIRECTION_OUTSIDE_TOKENS:
+        return "OUT"
+    return "#INVALID"
+
+
 @dataclass(frozen=True)
 class Firewall:
     firewall_name: str
@@ -142,7 +183,7 @@ class RouteEngine:
             return "BOTH"
         if value in ("IN", "OUT", "BOTH"):
             return value
-        return "#INVALID"
+        return _normalize_direction_synonym(value)
 
     def analyze(self, src_ip: str, dst_ip: str, direction: str = "") -> RouteResult:
         flow_direction = self.normalize_direction(direction)
