@@ -195,6 +195,44 @@ def test_parse_request_sheet_with_alias_only_ip_headers(tmp_path):
 # E2E #1: canonical layout, header on row 1
 # --------------------------------------------------------------------------- #
 
+def test_parse_request_without_direction_column_resolves_ok(tmp_path, engine):
+    # User scenario: the request form has NO 방향 column at all. A missing
+    # direction must parse to '' -> normalize to BOTH -> route OK, NOT a
+    # spurious DIRECTION_MISMATCH. This is the end-to-end parse->route proof.
+    rows = [
+        ["No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
+         "용도", "시작일", "종료일", "비고"],
+        [1, "", "10.10.10.5", "업무PC", "10.20.20.5", "DMZ", "TCP", "443",
+         "업무", "2026-01-01", "2026-12-31", "신청"],
+    ]
+    p = _build_xlsx(tmp_path, "no_direction.xlsx", rows)
+    parsed = parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
+    assert len(parsed) == 1
+    r = parsed[0]
+    assert r["direction"] == ""
+    res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+    assert res.status == "OK"
+    assert res.target_firewalls == "SECUI-FW-01;SECUI-FW-02"
+
+
+def test_parse_blank_source_ip_yields_no_match(tmp_path, engine):
+    # A row whose 출발지IP is blank must NOT match every range (the VBA blank-IP
+    # bug); it resolves to NO_MATCH on both Python and (mirrored) VBA.
+    rows = [
+        ["No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
+         "방향", "용도", "시작일", "종료일", "비고"],
+        [1, "", "", "", "10.20.20.5", "DMZ", "TCP", "443",
+         "OUT", "업무", "2026-01-01", "2026-12-31", "신청"],
+    ]
+    p = _build_xlsx(tmp_path, "blank_src.xlsx", rows)
+    parsed = parse_request_sheet(_sheet_rows(openpyxl.load_workbook(p).active))
+    assert len(parsed) == 1
+    r = parsed[0]
+    assert r["source_ip"] == ""
+    res = engine.analyze(r["source_ip"], r["dest_ip"], r["direction"])
+    assert res.status == "NO_MATCH"
+
+
 def test_parse_canonical_layout(tmp_path, engine):
     rows = [
         ["No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지", "프로토콜", "포트",
