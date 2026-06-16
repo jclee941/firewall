@@ -340,17 +340,20 @@ Private Function IsOutsideToken(ByVal token As String) As Boolean
 End Function
 
 Private Function AddressListOverlaps(ByVal requestValue As String, ByVal definitionValue As String) As Boolean
+    Dim requests() As String
+    Dim definitions() As String
+    ' A blank request token list matches NOTHING, even an ANY definition: an
+    ' incomplete request (empty IP cell) must never resolve to a route. Check the
+    ' request side BEFORE the ANY short-circuit (mirrors Python _address_list_overlaps).
+    requests = SplitAddressList(requestValue)
+    If UBound(requests) < LBound(requests) Then Exit Function
+
     If IsAnyCidr(definitionValue) Then
         AddressListOverlaps = True
         Exit Function
     End If
 
-    Dim requests() As String
-    Dim definitions() As String
-    requests = SplitAddressList(requestValue)
     definitions = SplitAddressList(definitionValue)
-    ' Mirror Python: empty token lists never overlap (a blank IP cell matches nothing).
-    If UBound(requests) < LBound(requests) Then Exit Function
     If UBound(definitions) < LBound(definitions) Then Exit Function
 
     Dim i As Long

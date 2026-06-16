@@ -235,6 +235,20 @@ def test_blank_request_ip_never_matches(engine, src, dst):
     assert result.status == "NO_MATCH"
 
 
+@pytest.mark.parametrize("any_def", ["ANY", "", "*", "ALL", "0.0.0.0/0"])
+def test_blank_request_ip_never_matches_even_against_any_range(any_def):
+    # A blank request IP must match NOTHING even when the firewall_range source/
+    # destination is ANY/blank — an incomplete request must not resolve to a route.
+    eng = RouteEngine(
+        firewalls=[Firewall("FW-ANY", vendor="SECUI")],
+        firewall_ranges=[FirewallRange("FW-ANY", any_def, any_def, "BOTH", 1)],
+    )
+    assert eng.analyze("", "10.20.20.5", "OUT").status == "NO_MATCH"
+    assert eng.analyze("10.10.10.5", "", "OUT").status == "NO_MATCH"
+    # a complete request still matches the ANY range
+    assert eng.analyze("10.10.10.5", "10.20.20.5", "OUT").status == "OK"
+
+
 @pytest.mark.parametrize("blank", ["", "   ", ";", " ; "])
 def test_split_address_list_drops_blank_tokens(blank):
     assert split_address_list(blank) == []

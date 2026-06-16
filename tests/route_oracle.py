@@ -244,11 +244,15 @@ class RouteEngine:
 
     @staticmethod
     def _address_list_overlaps(request_value: str, definition_value: str) -> bool:
+        # A blank request token list matches NOTHING, even an ANY definition:
+        # an incomplete request (empty 출발지/목적지) must never resolve to a route.
+        request_tokens = split_address_list(request_value)
+        if not request_tokens:
+            return False
         if is_any_cidr(definition_value):
             return True
-        request_tokens = split_address_list(request_value)
         definition_tokens = split_address_list(definition_value)
-        if not request_tokens or not definition_tokens:
+        if not definition_tokens:
             return False
         return any(
             ranges_overlap(request_token, definition_token)

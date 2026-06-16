@@ -729,6 +729,12 @@ def test_vba_address_overlap_treats_blank_ip_as_no_match():
         "AddressListOverlaps must bail out when the request token list is empty"
     assert "UBound(definitions) < LBound(definitions)" in overlap_fn, \
         "AddressListOverlaps must bail out when the definition token list is empty"
+    # The empty-request guard must run BEFORE the IsAnyCidr(definition) short-circuit,
+    # else a blank request IP would wrongly overlap an ANY range.
+    req_guard = overlap_fn.find("UBound(requests) < LBound(requests)")
+    any_short = overlap_fn.find("If IsAnyCidr(definitionValue) Then")
+    assert req_guard != -1 and any_short != -1 and req_guard < any_short, \
+        "empty-request guard must precede the ANY-definition short-circuit"
 
 
 def test_vba_find_header_row_is_content_based():
