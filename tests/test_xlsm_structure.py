@@ -77,7 +77,7 @@ def test_sheets_and_headers(xlsm_path):
     expected_sheets = {
         "requests", "firewalls", "firewall_ranges",
         "settings", "header_aliases", "processing_log", "sample-request-format", "usage",
-        "주간보고", "secui_cli", "vendor_cli_templates", "service_catalog",
+        "주간보고", "route_results", "secui_cli", "vendor_cli_templates", "service_catalog",
     }
     assert expected_sheets.issubset(set(wb.sheetnames)), \
         f"missing sheets: {expected_sheets - set(wb.sheetnames)}"
@@ -91,6 +91,12 @@ def test_sheets_and_headers(xlsm_path):
         "settings": ["key", "value", "\uc124\uba85"],
         "header_aliases": ["standard", "your_column", "\uc124\uba85"],
         "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
+        "route_results": [
+            "요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명",
+            "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지",
+            "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거",
+            "원본파일", "원본행",
+        ],
         "secui_cli": [
             "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
             "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
@@ -135,6 +141,7 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
         "usage",
         "주간보고",
         "requests",
+        "route_results",
         "settings",
         "firewalls",
         "firewall_ranges",
@@ -157,8 +164,14 @@ def test_operator_workbook_shows_only_work_sheets(xlsm_path):
         assert wb[sheet].sheet_state == "hidden", f"{sheet} must be hidden support data"
     assert wb.active is not None
     assert wb.active.title == "usage"
-    for column in ("F", "S", "T", "U", "V", "W", "X"):
-        assert wb["requests"].column_dimensions[column].hidden, f"requests {column} must be hidden in CLI workflow"
+    visible_request_columns = {"A", "B", "H", "I", "J", "K", "L", "M", "P", "Q", "R"}
+    for index in range(1, 26):
+        from openpyxl.utils import get_column_letter
+        column = get_column_letter(index)
+        hidden = bool(wb["requests"].column_dimensions[column].hidden)
+        assert hidden is (column not in visible_request_columns), (
+            f"requests {column} visibility drifted"
+        )
 
 
 def test_seed_data_present(xlsm_path):
@@ -744,7 +757,10 @@ def test_auto_run_macro_refreshes_cli_outputs_without_folder_prompt():
     macro = src[start:end]
     assert "FolderExists(SettingsValue(settingsSheet, \"request_folder\"))" in macro
     assert "MergeFirewallRequestFolder" in macro
+    assert "AnalyzeRequestRoutes" in macro
     assert "ConvertRequestsToSecuiCli" in macro
+    assert macro.find("MergeFirewallRequestFolder") < macro.find("AnalyzeRequestRoutes")
+    assert macro.find("AnalyzeRequestRoutes") < macro.find("ConvertRequestsToSecuiCli")
     assert "ConvertRequestsToSecuiBatch" not in macro
     assert "AnalyzeSecuiPolicyExport" not in macro
     assert "WriteSettings" not in macro
@@ -863,8 +879,8 @@ def test_ux_header_comments_on_key_columns(xlsm_path):
     assert req.cell(2, 8).comment is not None, "출발지IP header needs a hint comment"
     assert req.cell(2, 10).comment is not None, "목적지IP header needs a hint comment"
     # comment must not alter the header value
-    assert req.cell(2, 8).value == "\ucd9c\ubc1c\uc9c0IP"
-    assert req.cell(2, 10).value == "\ubaa9\uc801\uc9c0IP"
+    assert req.cell(2, 8).value == "\ucd9c\ubc1c\uc9c0"
+    assert req.cell(2, 10).value == "\ubaa9\uc801\uc9c0"
 
 
 def test_ux_tab_colors_assigned(xlsm_path):

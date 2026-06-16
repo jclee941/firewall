@@ -5,7 +5,7 @@ from typing import Final
 REQUESTS_HEADERS: Final = [
     "요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태",
     "대상방화벽",
-    "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향",
+    "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향",
     "용도", "시작일", "종료일", "비고",
     "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로",
     "매칭근거", "요청폴더",
@@ -39,6 +39,13 @@ PROCESSING_LOG: Final = [["processed_at", "source_file", "status", "merged_rows"
 
 SECUI_CLI_HEADERS: Final = [
     "No", "장비명", "정책명", "명령어", "검토메모", "신청부서", "신청번호",
+    "원본파일", "원본행",
+]
+
+ROUTE_RESULTS_HEADERS: Final = [
+    "요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명",
+    "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지",
+    "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거",
     "원본파일", "원본행",
 ]
 
@@ -84,13 +91,13 @@ SAMPLE_FORMAT: Final = [
 USAGE: Final = [
     ["Step", "Action"],
     ["1", "firewalls 시트에 방화벽 장비명, 벤더, 사용여부를 등록한다"],
-    ["2", "requests 또는 신청서 원본의 대상방화벽에 SECUI 장비명을 입력한다. 여러 장비는 ; 로 구분한다"],
+    ["2", "신청서 원본의 대상방화벽은 선택 입력이다. 비어 있으면 firewall_ranges 기준으로 자동 산출한다"],
     ["3", "vendor_cli_templates 시트에서 SECUI CLI 템플릿과 검토 메모를 확인한다"],
     ["4", "IP/CIDR/포트 여러 값은 세미콜론·콤마·줄바꿈·공백으로 구분한다"],
     ["5", "settings 시트의 request_folder에 신청서 폴더 경로를 적거나 SelectRequestFolder 매크로로 선택한다"],
-    ["6", "통합 문서를 열면 request_folder가 있을 때 신청서 통합 후 secui_cli를 자동 생성한다"],
-    ["7", "라우팅 자동 탐색은 추후 기능이다. 현재 CLI 생성은 대상방화벽 입력값을 기준으로 한다"],
-    ["8", "필요하면 MergeFirewallRequestFolder, ConvertRequestsToSecuiCli를 수동 실행한다"],
+    ["6", "통합 문서를 열면 request_folder가 있을 때 신청서 통합, 경로탐색, secui_cli 생성을 자동 실행한다"],
+    ["7", "대상방화벽을 직접 입력하면 그 값을 우선 사용하고, 공란이면 출발지/목적지 대역으로 경로를 찾는다"],
+    ["8", "경로탐색 결과는 route_results 시트에서 확인한다"],
     ["9", "필요하면 vendor_cli_templates의 command_template을 장비 CLI 형식에 맞게 수정한다"],
     ["10", "ConvertRequestsToSecuiCli 매크로로 합쳐도 권한이 넓어지지 않는 신청을 룰별 그룹객체와 정책 CLI로 묶는다"],
     ["11", "ANY는 객체를 만들지 않고 정책에 직접 들어간다. 인터페이스는 firewall_ranges의 source_interface/destination_interface 기준이다"],
@@ -162,6 +169,9 @@ WIDTHS: Final = {
     "settings": {"A": 22, "B": 26, "C": 60},
     "header_aliases": {"A": 16, "B": 22, "C": 44},
     "processing_log": {"A": 20, "B": 22, "C": 10, "D": 12, "E": 40},
+    "route_results": {"A": 16, "B": 12, "C": 18, "D": 16, "E": 18, "F": 16,
+                      "G": 10, "H": 14, "I": 10, "J": 32, "K": 16, "L": 40,
+                      "M": 34, "N": 18, "O": 18, "P": 30, "Q": 60, "R": 24, "S": 10},
     "secui_cli": {"A": 6, "B": 18, "C": 36, "D": 120, "E": 60,
                   "F": 16, "G": 14, "H": 24, "I": 10},
     "vendor_cli_templates": {"A": 10, "B": 24, "C": 9, "D": 150, "E": 60},
@@ -174,7 +184,7 @@ WIDTHS: Final = {
 }
 
 FILTER_SHEETS: Final = {
-    "requests", "firewalls", "firewall_ranges", "processing_log", "service_catalog",
+    "requests", "firewalls", "firewall_ranges", "route_results", "processing_log", "service_catalog",
 }
 
 FREEZE_PANES: Final = {"requests": "H3"}
@@ -186,6 +196,7 @@ TAB_COLORS: Final = {
     "settings": "FFFFC000",
     "header_aliases": "FFFFC000",
     "processing_log": "FFA6A6A6",
+    "route_results": "FF4472C4",
     "secui_cli": "FF4472C4",
     "vendor_cli_templates": "FFFFC000",
     "service_catalog": "FFED7D31",
@@ -201,6 +212,7 @@ OPERATOR_VISIBLE_SHEETS: Final = {
     "settings",
     "firewalls",
     "firewall_ranges",
+    "route_results",
     "secui_cli",
     "vendor_cli_templates",
 }

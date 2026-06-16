@@ -20,7 +20,7 @@ REQ_DIRECTION_COL = 14
 REQ_TARGET_COL = 7
 REQ_SRC_IP_COL = 8
 REQ_DST_IP_COL = 10
-REQ_HIDDEN_ROUTE_COLS = (6, 19, 20, 21, 22, 23, 24)
+REQ_VISIBLE_FINAL_COLS = (1, 2, 8, 9, 10, 11, 12, 13, 16, 17, 18)
 REQ_HEADER_ROW = 2
 REQ_DATA_START_ROW = 3
 EMPTY_REQUIRED_FILL = PatternFill("solid", fgColor="FFC7CE")
@@ -35,7 +35,8 @@ CLI_TEMPLATE_HEADER_COMMENTS = {
 }
 USAGE_LINKS = (
     ("주간보고", "업무개선 진행 내용"),
-    ("requests", "신청 통합/분석 결과"),
+    ("requests", "최종 신청 목록"),
+    ("route_results", "경로탐색 결과"),
     ("firewalls", "방화벽 장비 목록"),
     ("firewall_ranges", "출발지/목적지 대역과 인터페이스 설정"),
     ("settings", "신청서 폴더와 파싱 설정"),
@@ -61,8 +62,8 @@ def apply_ux(wb) -> None:
             wb[name].sheet_properties.tabColor = color
 
     req = wb["requests"]
-    for column in REQ_HIDDEN_ROUTE_COLS:
-        req.column_dimensions[get_column_letter(column)].hidden = True
+    for column in range(1, req.max_column + 1):
+        req.column_dimensions[get_column_letter(column)].hidden = column not in REQ_VISIBLE_FINAL_COLS
     add_list_validation(req, get_column_letter(REQ_PROTOCOL_COL), ["TCP", "UDP", "ICMP"], start_row=REQ_DATA_START_ROW)
     add_list_validation(req, get_column_letter(REQ_DIRECTION_COL), ["IN", "OUT", "BOTH"], start_row=REQ_DATA_START_ROW)
 

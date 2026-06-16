@@ -15,11 +15,9 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 2. `firewalls` 시트에 장비명, 벤더, 사용여부를 등록합니다.
 3. `firewall_ranges` 시트에 출발지 대역, 목적지 대역, 방향, 표시 순서를 등록합니다.
 4. `settings` 시트의 `request_folder` 값에 신청서 폴더 경로를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
-5. 통합 문서를 다시 열면 `Workbook_Open`이 `MergeFirewallRequestFolder`를 자동 실행합니다. 수동 실행이 필요하면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`를 실행합니다.
-6. 이미 통합된 `requests` 행만 다시 계산하려면 `AnalyzeRequestRoutes`를 실행합니다.
-7. SECUI 장비용 결과가 필요하면 `ConvertRequestsToSecuiBatch` 또는 `ConvertRequestsToSecuiCli`를 실행합니다.
-8. 기존 정책과 비교하려면 SECUI export를 `secui_policy_export` 시트에 붙여넣고 `AnalyzeSecuiPolicyExport`를 실행합니다.
-9. `policy_summary`에서 기존 허용·차단·검토필요 건수를 먼저 보고 `policy_analysis` 상세를 필터링합니다.
+5. 통합 문서를 다시 열면 `Workbook_Open`이 신청서 통합, 경로탐색, SECUI CLI 생성을 순서대로 자동 실행합니다.
+6. `requests`에서 최종 신청 목록을 확인하고, `route_results`에서 대상방화벽과 경로탐색 결과를 확인합니다.
+7. 수동 실행이 필요하면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`, `AnalyzeRequestRoutes`, `ConvertRequestsToSecuiCli`를 순서대로 실행합니다.
 
 ## 시트 한눈에 보기
 
@@ -39,11 +37,9 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 
 | 시트 | 역할 |
 | --- | --- |
-| `requests` | 통합 신청서와 분석 결과 |
+| `requests` | 최종 신청 목록 |
 | `processing_log` | 통합 처리 로그 |
-| `policy_analysis` | 신청서와 SECUI 기존 정책 비교 결과 |
-| `policy_summary` | 기존 정책 분석 건수와 다음 조치 요약 |
-| `secui_batch` | SECUI 배치 입력용 행 |
+| `route_results` | 경로탐색/대상방화벽/검증 결과 |
 | `secui_cli` | SECUI CLI 명령 초안 |
 
 ### 참고 시트
@@ -95,29 +91,21 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 | `DIRECTION_MISMATCH` | 반대 방향 정의는 있으나 신청 방향과 맞지 않거나, 방향 값이 잘못됨 |
 | `DUPLICATE` | 같은 요청이 중복 후보로 표시됨. 라우트 상태 뒤에 병합될 수 있음 |
 
-## requests 결과 컬럼
+## requests / route_results 결과 컬럼
 
-`requests` 시트는 25개 컬럼을 유지합니다. 데이터는 3행부터입니다.
+`requests` 시트는 내부적으로 25개 컬럼을 유지하지만 화면에는 최종 신청 목록에 필요한 컬럼만 표시합니다. 데이터는 3행부터입니다.
 
-`요청부서`, `요청번호`, `제목`, `원본파일`, `원본행`, `검증상태`, `대상방화벽`, `출발지IP`, `출발지설명`, `목적지IP`, `목적지설명`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`, `검증메시지`, `방화벽경로`, `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거`, `요청폴더`
+표시 컬럼: `요청부서`, `요청번호`, `출발지`, `출발지설명`, `목적지`, `목적지설명`, `프로토콜`, `포트`, `시작일`, `종료일`, `비고`
+
+경로탐색 결과와 원본파일/원본행 추적 정보는 `route_results` 시트에서 확인합니다.
 
 ## SECUI 출력
 
-`ConvertRequestsToSecuiBatch`와 `ConvertRequestsToSecuiCli`는 `대상방화벽`을 `;`로 분리해 장비별 행을 만듭니다. `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다.
+`ConvertRequestsToSecuiCli`는 `대상방화벽`을 `;`로 분리해 장비별 행을 만듭니다. `firewalls.vendor=SECUI`이고 사용 중인 장비만 출력합니다. `대상방화벽`이 비어 있으면 파싱 후 경로탐색 결과를 사용합니다.
 
 `service_catalog` 시트는 자주 쓰는 SECUI 서비스 표기 예시를 제공합니다. `프로토콜`은 기존 드롭다운을 유지하고, `포트` 입력은 제한하지 않으므로 목록에 없는 포트도 기존처럼 직접 입력할 수 있습니다.
 
 CLI 명령은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`을 신청서 데이터로 치환해 만듭니다. 기본 placeholder는 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}`이며, `_q`가 붙은 값은 CLI용 따옴표로 감싼 값입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
-
-## 기존 SECUI 정책 분석
-
-`secui_policy_export` 시트는 폐쇄망에서 내보낸 기존 SECUI 정책을 붙여넣는 기초데이터 시트입니다. 실제 export 파일은 저장소에 포함하지 않습니다.
-
-필수 입력 컬럼은 `policy_id`, `policy_name`, `firewall_name`, `source`, `destination`, `service`, `action`, `enabled`, `comment`입니다. `action`은 `allow`, `accept`, `permit`, `pass`를 허용 계열로, `deny`, `drop`, `reject`를 차단 계열로 봅니다.
-
-`AnalyzeSecuiPolicyExport` 매크로는 `requests`의 신청 행과 `secui_policy_export`의 기존 정책을 비교해 `policy_analysis`를 다시 만듭니다. 최종 시트에는 업무 판단에 필요한 `판정`, `요청번호`, `대상방화벽`, `출발지`, `목적지`, `서비스`, `기존정책`, `기존정책상태`, `근거`, `조치`만 보입니다. `원본행`, raw 값, 정규화 보조값, debug note는 K:T 숨김 컬럼으로 남겨 두어 화면은 복잡하지 않게 유지합니다.
-
-`policy_summary`는 `policy_analysis`의 상태별 건수를 자동 집계합니다. 먼저 `기존 차단`, `검토 필요`, `기존 정책 없음` 건수를 확인한 뒤 상세 시트에서 해당 판정만 필터링하면 검토 순서를 빠르게 잡을 수 있습니다.
 
 ## 개발
 

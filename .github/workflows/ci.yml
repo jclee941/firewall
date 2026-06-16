@@ -61,7 +61,7 @@ jobs:
           g.close()
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
-                  "settings", "header_aliases", "processing_log",
+                  "settings", "header_aliases", "processing_log", "route_results",
                   "secui_cli", "vendor_cli_templates",
                   "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames

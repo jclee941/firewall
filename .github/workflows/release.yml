@@ -62,7 +62,7 @@ jobs:
           g.close()
           wb = openpyxl.load_workbook(p, keep_vba=True)
           need = {"requests", "firewalls", "firewall_ranges",
-                  "settings", "header_aliases", "processing_log",
+                  "settings", "header_aliases", "processing_log", "route_results",
                   "secui_cli", "vendor_cli_templates",
                   "service_catalog", "sample-request-format", "usage"}
           assert need.issubset(set(wb.sheetnames)), wb.sheetnames
@@ -119,7 +119,7 @@ jobs:
           TAG="${{ steps.tag.outputs.name }}"
           NOTES_FILE="$(mktemp)"
           cat > "$NOTES_FILE" <<'EOF'
-          신청서 엑셀을 받아 `대상방화벽` 기준으로 SECUI CLI를 생성하는 도구입니다.
+          신청서 엑셀을 받아 경로탐색으로 `대상방화벽`을 산출하고 SECUI CLI를 생성하는 도구입니다.
 
           ## 다운로드 / 설치
           - Python 없이 실행: **secui-gui-windows-x64-<버전>.zip** 또는 **secui-gui-linux-x64-<버전>.zip**을 받으세요. native GUI 실행 파일과 샘플 workbook/request-folder가 함께 포함됩니다.
@@ -133,14 +133,17 @@ jobs:
 
           ## 사용 순서
           1. `firewalls` : SECUI 장비명, 벤더, 사용여부
-          2. `requests` 또는 신청서 원본 `대상방화벽` : CLI 생성 대상 장비명 (`;`로 복수 입력)
+          2. `firewall_ranges` : 출발지/목적지 대역별 통과 방화벽과 인터페이스
           3. `vendor_cli_templates` : SECUI 정책 생성 CLI 템플릿 확인/수정
           4. `settings` : 신청서 폴더(request_folder), 파싱 대상(parse_sheet), 헤더 별칭(header_alias)
-          5. 신청서를 폴더에 모은 뒤 통합 문서를 열면 `request_folder` 기준 신청서 통합과 `secui_cli` 생성이 자동 실행됩니다.
-          6. 수동 실행이 필요하면 `MergeFirewallRequestFolder`, `ConvertRequestsToSecuiCli`를 실행하세요.
+          5. 신청서를 폴더에 모은 뒤 통합 문서를 열면 신청서 통합, 경로탐색, `secui_cli` 생성이 자동 실행됩니다.
+          6. `requests`에서 최종 신청 목록을 보고, `route_results`에서 경로탐색 결과를 확인하세요.
+          7. 수동 실행이 필요하면 `MergeFirewallRequestFolder`, `AnalyzeRequestRoutes`, `ConvertRequestsToSecuiCli`를 순서대로 실행하세요.
 
           ## 주요 기능
-          - 라우팅 자동 탐색 없이 `대상방화벽` 입력값 기준 SECUI CLI 생성
+          - 신청서 파싱 후 `firewall_ranges` 기준 `대상방화벽` 자동 산출
+          - 원본에 `대상방화벽`이 있으면 그 값을 우선 사용하고, 공란이면 경로탐색 결과 사용
+          - `requests`는 최종 신청 목록 컬럼만 표시하고, 경로 관련 정보는 `route_results`로 분리
           - 릴리즈 통합 문서의 `secui_cli`에 바로 확인 가능한 예시 CLI 포함
           - 같은 장비 + 같은 목적지 + 같은 서비스는 출발지 그룹으로 묶음
           - 같은 장비 + 같은 출발지 + 같은 목적지는 서비스/포트 그룹으로 묶음

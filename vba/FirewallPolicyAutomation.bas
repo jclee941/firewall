@@ -8,6 +8,7 @@ Private Const VENDOR_CLI_TEMPLATE_SHEET As String = "vendor_cli_templates"
 Private Const SERVICE_CATALOG_SHEET As String = "service_catalog"
 Private Const LOG_SHEET As String = "processing_log"
 Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
+Private Const ROUTE_RESULTS_SHEET As String = "route_results"
 
 ' requests output layout: row 1 = cosmetic group labels, row 2 = leaf headers,
 ' data starts at row 3. Keep these in sync with build_xlsm.py constants.
@@ -68,6 +69,7 @@ Public Sub AutoRunWorkbookOutputs()
     If FolderExists(SettingsValue(settingsSheet, "request_folder")) Then
         MergeFirewallRequestFolder
     End If
+    AnalyzeRequestRoutes False
     ConvertRequestsToSecuiCli
 
     mSuppressMessages = oldSuppress
@@ -84,6 +86,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Dim firewallRangeSheet As Worksheet
     Dim settingsSheet As Worksheet
     Dim logSheet As Worksheet
+    Dim routeResultsSheet As Worksheet
     Dim secuiCliSheet As Worksheet
     Dim vendorCliTemplateSheet As Worksheet
     Dim serviceCatalogSheet As Worksheet
@@ -93,6 +96,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     Set firewallRangeSheet = EnsureSheet(FIREWALL_RANGE_SHEET)
     Set settingsSheet = EnsureSheet(SETTINGS_SHEET)
     Set logSheet = EnsureSheet(LOG_SHEET)
+    Set routeResultsSheet = EnsureSheet(ROUTE_RESULTS_SHEET)
     Set secuiCliSheet = EnsureSheet(SECUI_CLI_SHEET)
     Set vendorCliTemplateSheet = EnsureSheet(VENDOR_CLI_TEMPLATE_SHEET)
     Set serviceCatalogSheet = EnsureSheet(SERVICE_CATALOG_SHEET)
@@ -102,6 +106,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     WriteFirewallRangeHeaders firewallRangeSheet
     WriteSettings settingsSheet
     WriteLogHeaders logSheet
+    WriteRouteResultsHeaders routeResultsSheet
     WriteSecuiCliHeaders secuiCliSheet
     WriteVendorCliTemplateHeaders vendorCliTemplateSheet
     WriteServiceCatalogHeaders serviceCatalogSheet
@@ -109,6 +114,7 @@ Public Sub SetupFirewallAutomationWorkbook()
     FormatFirewallsSheet firewallsSheet
     FormatGenericSheet firewallRangeSheet, "A:K"
     FormatLogSheet logSheet
+    FormatRouteResultsSheet routeResultsSheet
     FormatSecuiCliSheet secuiCliSheet
     FormatGenericSheet vendorCliTemplateSheet, "A:E"
     FormatGenericSheet serviceCatalogSheet, "A:E"
@@ -1759,6 +1765,10 @@ Private Sub WriteLogHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:E1").Value = Array("processed_at", "source_file", "status", "merged_rows", "message")
 End Sub
 
+Private Sub WriteRouteResultsHeaders(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:S1").Value = Array("요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "원본파일", "원본행")
+End Sub
+
 Private Sub WriteSecuiCliHeaders(ByVal worksheet As Worksheet)
     worksheet.Range("A1:I1").Value = Array("No", "장비명", "정책명", "명령어", "검토메모", "신청부서", "신청번호", "원본파일", "원본행")
 End Sub
@@ -1807,6 +1817,11 @@ End Sub
 
 Private Sub FormatLogSheet(ByVal worksheet As Worksheet)
     SafeAutoFitColumns worksheet, "A:E"
+    worksheet.Rows(1).Font.Bold = True
+End Sub
+
+Private Sub FormatRouteResultsSheet(ByVal worksheet As Worksheet)
+    SafeAutoFitColumns worksheet, "A:S"
     worksheet.Rows(1).Font.Bold = True
 End Sub
 
@@ -1875,6 +1890,7 @@ Private Sub ApplyOperatorSheetVisibility()
     SetSheetVisibility SECUI_CLI_SHEET, SHEET_VISIBLE
     SetSheetVisibility VENDOR_CLI_TEMPLATE_SHEET, SHEET_VISIBLE
     SetSheetVisibility FIREWALL_RANGE_SHEET, SHEET_VISIBLE
+    SetSheetVisibility ROUTE_RESULTS_SHEET, SHEET_VISIBLE
 
     SetSheetVisibility "usage", SHEET_VISIBLE
     SetSheetVisibility "header_aliases", SHEET_HIDDEN
@@ -1898,7 +1914,7 @@ Private Sub WriteRequestHeaders(ByVal worksheet As Worksheet)
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_SOURCE_NAME)).Merge
     worksheet.Range(worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_IP), worksheet.Cells(REQ_HEADER_GROUP_ROW, COL_DESTINATION_NAME)).Merge
     Application.DisplayAlerts = True
-    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "대상방화벽", "출발지IP", "출발지설명", "목적지IP", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
+    worksheet.Range("A" & REQ_HEADER_ROW & ":Y" & REQ_HEADER_ROW).Value = Array("요청부서", "요청번호", "제목", "원본파일", "원본행", "검증상태", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "요청폴더")
 End Sub
 
 Private Sub WriteFirewallHeaders(ByVal worksheet As Worksheet)

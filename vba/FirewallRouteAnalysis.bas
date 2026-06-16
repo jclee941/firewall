@@ -4,12 +4,21 @@ Option Explicit
 Private Const FIREWALLS_SHEET As String = "firewalls"
 Private Const FIREWALL_RANGE_SHEET As String = "firewall_ranges"
 Private Const REQUESTS_SHEET As String = "requests"
+Private Const ROUTE_RESULTS_SHEET As String = "route_results"
 
 Private Const REQ_DATA_START_ROW As Long = 3
+Private Const RCOL_TEAM As Long = 1
+Private Const RCOL_DOC_NO As Long = 2
+Private Const RCOL_SOURCE_FILE As Long = 4
+Private Const RCOL_SOURCE_ROW As Long = 5
 Private Const RCOL_VALID_STATUS As Long = 6
 Private Const RCOL_TARGET As Long = 7
 Private Const RCOL_SOURCE_IP As Long = 8
+Private Const RCOL_SOURCE_NAME As Long = 9
 Private Const RCOL_DEST_IP As Long = 10
+Private Const RCOL_DEST_NAME As Long = 11
+Private Const RCOL_PROTOCOL As Long = 12
+Private Const RCOL_PORT As Long = 13
 Private Const RCOL_DIRECTION As Long = 14
 Private Const RCOL_VALID_MSG As Long = 19
 Private Const RCOL_FW_PATH As Long = 20
@@ -21,7 +30,7 @@ Private Const RCOL_MATCH As Long = 24
 Private mEnabledFw As Object
 Private mRanges As Collection
 
-Public Sub AnalyzeRequestRoutes()
+Public Sub AnalyzeRequestRoutes(Optional ByVal showMessage As Boolean = True)
     Dim requestsSheet As Worksheet
     Dim lastRow As Long
     Dim lastByDst As Long
@@ -50,7 +59,61 @@ Public Sub AnalyzeRequestRoutes()
         End If
     Next rowIndex
 
-    MsgBox CStr(analyzed) & "건의 신청서 방화벽 대역을 분석했습니다.", vbInformation
+    RefreshRouteResults requestsSheet, lastRow
+    If showMessage Then MsgBox CStr(analyzed) & "건의 신청서 방화벽 대역을 분석했습니다.", vbInformation
+End Sub
+
+Private Sub RefreshRouteResults(ByVal requestsSheet As Worksheet, ByVal lastRow As Long)
+    Dim routeSheet As Worksheet
+    Dim requestRow As Long
+    Dim outputRow As Long
+
+    Set routeSheet = EnsureRouteResultsSheet()
+    WriteRouteResultsHeaders routeSheet
+    routeSheet.Rows("2:" & routeSheet.Rows.Count).Clear
+
+    outputRow = 2
+    For requestRow = REQ_DATA_START_ROW To lastRow
+        If Len(Trim$(CStr(requestsSheet.Cells(requestRow, RCOL_SOURCE_IP).Value))) > 0 _
+                Or Len(Trim$(CStr(requestsSheet.Cells(requestRow, RCOL_DEST_IP).Value))) > 0 Then
+            routeSheet.Cells(outputRow, 1).Value = requestsSheet.Cells(requestRow, RCOL_TEAM).Value
+            routeSheet.Cells(outputRow, 2).Value = requestsSheet.Cells(requestRow, RCOL_DOC_NO).Value
+            routeSheet.Cells(outputRow, 3).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_IP).Value
+            routeSheet.Cells(outputRow, 4).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_NAME).Value
+            routeSheet.Cells(outputRow, 5).Value = requestsSheet.Cells(requestRow, RCOL_DEST_IP).Value
+            routeSheet.Cells(outputRow, 6).Value = requestsSheet.Cells(requestRow, RCOL_DEST_NAME).Value
+            routeSheet.Cells(outputRow, 7).Value = requestsSheet.Cells(requestRow, RCOL_PROTOCOL).Value
+            routeSheet.Cells(outputRow, 8).Value = requestsSheet.Cells(requestRow, RCOL_PORT).Value
+            routeSheet.Cells(outputRow, 9).Value = requestsSheet.Cells(requestRow, RCOL_DIRECTION).Value
+            routeSheet.Cells(outputRow, 10).Value = requestsSheet.Cells(requestRow, RCOL_TARGET).Value
+            routeSheet.Cells(outputRow, 11).Value = requestsSheet.Cells(requestRow, RCOL_VALID_STATUS).Value
+            routeSheet.Cells(outputRow, 12).Value = requestsSheet.Cells(requestRow, RCOL_VALID_MSG).Value
+            routeSheet.Cells(outputRow, 13).Value = requestsSheet.Cells(requestRow, RCOL_FW_PATH).Value
+            routeSheet.Cells(outputRow, 14).Value = requestsSheet.Cells(requestRow, RCOL_SRC_ZONE).Value
+            routeSheet.Cells(outputRow, 15).Value = requestsSheet.Cells(requestRow, RCOL_DST_ZONE).Value
+            routeSheet.Cells(outputRow, 16).Value = requestsSheet.Cells(requestRow, RCOL_ZONE_PATH).Value
+            routeSheet.Cells(outputRow, 17).Value = requestsSheet.Cells(requestRow, RCOL_MATCH).Value
+            routeSheet.Cells(outputRow, 18).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_FILE).Value
+            routeSheet.Cells(outputRow, 19).Value = requestsSheet.Cells(requestRow, RCOL_SOURCE_ROW).Value
+            outputRow = outputRow + 1
+        End If
+    Next requestRow
+    routeSheet.Rows(1).Font.Bold = True
+    routeSheet.Columns("A:S").AutoFit
+End Sub
+
+Private Function EnsureRouteResultsSheet() As Worksheet
+    On Error Resume Next
+    Set EnsureRouteResultsSheet = ThisWorkbook.Worksheets(ROUTE_RESULTS_SHEET)
+    On Error GoTo 0
+    If EnsureRouteResultsSheet Is Nothing Then
+        Set EnsureRouteResultsSheet = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        EnsureRouteResultsSheet.Name = ROUTE_RESULTS_SHEET
+    End If
+End Function
+
+Private Sub WriteRouteResultsHeaders(ByVal worksheet As Worksheet)
+    worksheet.Range("A1:S1").Value = Array("요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명", "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거", "원본파일", "원본행")
 End Sub
 
 Private Sub WriteResultRow(ByVal sheet As Worksheet, ByVal rowIndex As Long, ByVal res As Object)

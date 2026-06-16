@@ -34,6 +34,7 @@ def test_usage_sheet_has_internal_quick_links(xlsm_path: Path) -> None:
         targets = {
             "주간보고",
             "requests",
+            "route_results",
             "firewalls",
             "firewall_ranges",
             "settings",

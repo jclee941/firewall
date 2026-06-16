@@ -35,6 +35,7 @@ from scripts.workbook_contract import (
     HEADER_ALIASES,
     PROCESSING_LOG,
     REQUESTS_HEADERS,
+    ROUTE_RESULTS_HEADERS,
     SAMPLE_FORMAT,
     SERVICE_CATALOG,
     SETTINGS,
@@ -191,9 +192,9 @@ def main() -> int:
     # Row 1: cosmetic group labels (출발지 over IP+설명, 목적지 over IP+설명).
     # Row 2: canonical leaf headers. Data from row 3. Mirrors VBA WriteRequestHeaders.
     col_index = {h: i + 1 for i, h in enumerate(REQUESTS_HEADERS)}
-    src_ip_col = col_index["출발지IP"]
+    src_ip_col = col_index["출발지"]
     src_desc_col = col_index["출발지설명"]
-    dst_ip_col = col_index["목적지IP"]
+    dst_ip_col = col_index["목적지"]
     dst_desc_col = col_index["목적지설명"]
     base.cell(row=_REQ_HEADER_GROUP_ROW, column=src_ip_col, value="출발지")
     base.cell(row=_REQ_HEADER_GROUP_ROW, column=dst_ip_col, value="목적지")
@@ -205,7 +206,8 @@ def main() -> int:
     # seeded example requests (single IP + CIDR), one per row starting at data row
     for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=_REQ_DATA_START_ROW):
         for key, val in example.items():
-            base.cell(row=r, column=col_index[key], value=val)
+            header_key = {"출발지IP": "출발지", "목적지IP": "목적지"}.get(key, key)
+            base.cell(row=r, column=col_index[header_key], value=val)
     # style the group label row too, then the leaf header row
     for c in (src_ip_col, dst_ip_col):
         gc = base.cell(row=_REQ_HEADER_GROUP_ROW, column=c)
@@ -225,6 +227,7 @@ def main() -> int:
     add("settings", SETTINGS)
     add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)
+    add("route_results", [ROUTE_RESULTS_HEADERS])
     add("secui_cli", secui_cli_seed_rows())
     add("vendor_cli_templates", VENDOR_CLI_TEMPLATES)
     add("service_catalog", SERVICE_CATALOG)

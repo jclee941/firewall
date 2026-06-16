@@ -109,6 +109,7 @@ def test_auto_run_output_sheets_are_not_protected():
         macro_written = (
             "requests",
             "processing_log",
+            "route_results",
             "secui_cli",
         )
         for sheet_name in macro_written:

@@ -5,6 +5,7 @@ import sys
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
+from typing import Final
 
 import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
@@ -29,6 +30,10 @@ FIREWALL_RANGES_SHEET = "firewall_ranges"
 TEMPLATE_SHEET = "vendor_cli_templates"
 SETTINGS_SHEET = "settings"
 HEADER_ALIASES_SHEET = "header_aliases"
+WORKBOOK_REQUEST_HEADER_MAP: Final = {
+    "출발지": "출발지IP",
+    "목적지": "목적지IP",
+}
 
 
 def main() -> int:
@@ -93,7 +98,10 @@ def _requests_from_workbook(path: Path) -> list[RequestRecord]:
         if REQUEST_SHEET not in wb.sheetnames:
             raise ValueError(f"missing sheet: {REQUEST_SHEET}")
         ws = wb[REQUEST_SHEET]
-        headers = [str(ws.cell(2, col).value or "").strip() for col in range(1, ws.max_column + 1)]
+        headers = [
+            _workbook_request_header(str(ws.cell(2, col).value or "").strip())
+            for col in range(1, ws.max_column + 1)
+        ]
         records: list[RequestRecord] = []
         for row_index in range(3, ws.max_row + 1):
             record: RequestRecord = {
@@ -108,6 +116,10 @@ def _requests_from_workbook(path: Path) -> list[RequestRecord]:
         return records
     finally:
         wb.close()
+
+
+def _workbook_request_header(header: str) -> str:
+    return WORKBOOK_REQUEST_HEADER_MAP.get(header, header)
 
 
 def _requests_from_folder(folder: Path, parse_sheet: str, user_aliases: dict[str, str] | None = None) -> list[RequestRecord]:

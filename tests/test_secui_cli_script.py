@@ -6,6 +6,9 @@ from pathlib import Path
 
 import openpyxl
 
+from scripts.secui_cli_runtime import RequestRecord, secui_cli_rows
+from scripts.workbook_contract import FIREWALLS, FIREWALL_RANGES, VENDOR_CLI_TEMPLATES
+
 ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
 XLSM = ROOT / "dist" / "firewall-policy-automation.xlsm"
@@ -90,3 +93,33 @@ def test_secui_cli_export_command_writes_xlsx_from_workbook(tmp_path: Path) -> N
         assert any("fw set addrgrp" in command for command in commands)
     finally:
         wb.close()
+
+
+def test_secui_cli_rows_derive_target_firewalls_when_parsed_request_has_blank_target() -> None:
+    requests: list[RequestRecord] = [
+        {
+            "요청부서": "정보보호센터",
+            "요청번호": "AUTO",
+            "원본파일": "blank-target.xlsx",
+            "원본행": 2,
+            "대상방화벽": "",
+            "출발지IP": "10.10.10.5",
+            "출발지설명": "업무PC",
+            "목적지IP": "10.20.20.5",
+            "목적지설명": "DMZ서버",
+            "프로토콜": "TCP",
+            "포트": "443",
+            "방향": "OUT",
+            "용도": "자동 경로 탐색",
+            "비고": "대상방화벽 공란",
+        },
+    ]
+
+    rows = secui_cli_rows(requests, FIREWALLS, FIREWALL_RANGES, VENDOR_CLI_TEMPLATES)
+
+    firewalls = [str(row[1]) for row in rows[1:]]
+    assert firewalls == ["SECUI-FW-01", "SECUI-FW-02"]
+    commands = "\n".join(str(row[3]) for row in rows[1:])
+    assert "# device=SECUI-FW-01" in commands
+    assert "# device=SECUI-FW-02" in commands
+    assert "fw set srule" in commands

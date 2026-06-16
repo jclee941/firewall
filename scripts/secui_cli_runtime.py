@@ -53,7 +53,7 @@ def secui_cli_rows(
         source_object = _request_source_object(request)
         destination_object = _request_destination_object(request)
         service_object = _request_service_object(request)
-        for firewall_name in _split_targets(str(request.get(REQ_TARGET, "") or "")):
+        for firewall_name in _request_firewalls(request, enabled_firewalls, firewall_ranges):
             if firewall_name not in enabled_firewalls:
                 continue
             key = _source_destination_key(
@@ -69,7 +69,7 @@ def secui_cli_rows(
         source_object = _request_source_object(request)
         destination_object = _request_destination_object(request)
         service_object = _request_service_object(request)
-        for firewall_name in _split_targets(str(request.get(REQ_TARGET, "") or "")):
+        for firewall_name in _request_firewalls(request, enabled_firewalls, firewall_ranges):
             if firewall_name not in enabled_firewalls:
                 continue
             destination_address = str(request.get(REQ_DESTINATION_IP, "") or "")
@@ -140,6 +140,51 @@ def _request_destination_object(request: RequestRecord) -> str:
 
 def _request_service_object(request: RequestRecord) -> str:
     return _service_text(str(request.get(REQ_PROTOCOL, "") or ""), str(request.get(REQ_PORT, "") or ""))
+
+
+def _request_firewalls(
+    request: RequestRecord,
+    enabled_firewalls: set[str],
+    firewall_ranges: Table,
+) -> list[str]:
+    configured = _split_targets(str(request.get(REQ_TARGET, "") or ""))
+    if configured:
+        return configured
+    return _matched_firewalls(request, enabled_firewalls, firewall_ranges)
+
+
+def _matched_firewalls(
+    request: RequestRecord,
+    enabled_firewalls: set[str],
+    firewall_ranges: Table,
+) -> list[str]:
+    source = str(request.get(REQ_SOURCE_IP, "") or "")
+    destination = str(request.get(REQ_DESTINATION_IP, "") or "")
+    direction = str(request.get(REQ_DIRECTION, "") or "")
+    matches: list[tuple[int, int, str]] = []
+    for row_order, row in enumerate(firewall_ranges[1:], start=1):
+        if len(row) < 6:
+            continue
+        firewall_name = str(row[0]).strip()
+        if firewall_name not in enabled_firewalls or not _enabled(str(row[5])):
+            continue
+        if not _direction_matches(str(row[3]), direction):
+            continue
+        if _overlaps(source, str(row[1])) and _overlaps(destination, str(row[2])):
+            matches.append((_path_order(row[4]), row_order, firewall_name))
+
+    firewalls: list[str] = []
+    for _path_order_value, _row_order, firewall_name in sorted(matches):
+        if firewall_name not in firewalls:
+            firewalls.append(firewall_name)
+    return firewalls
+
+
+def _path_order(value: Cell) -> int:
+    try:
+        return int(str(value or "").strip())
+    except ValueError:
+        return 999999
 
 
 def _new_group(
