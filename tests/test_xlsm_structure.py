@@ -478,7 +478,7 @@ def test_secui_cli_macro_generates_fw_set_srule_commands():
 
 def test_secui_cli_conversion_does_not_run_route_analysis(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
-    assert wb["requests"].cell(3, 3).value == "SECUI-FW-01"
+    assert wb["requests"].cell(3, 3).value == "SECUI-FW-01;SECUI-FW-02"
 
     src = open(VBA_POLICY, encoding="utf-8").read()
     macro_start = src.find("Public Sub ConvertRequestsToSecuiCli()")

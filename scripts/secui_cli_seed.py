@@ -228,9 +228,14 @@ def _range_info(firewall_name: str, source: str, destination: str, direction: st
 
 
 def _overlaps(request_value: str, definition_value: str) -> bool:
+    # A blank request value matches NOTHING, even an ANY definition: check the
+    # request side BEFORE the ANY short-circuit. Mirrors VBA SecuiAddressListOverlaps
+    # and route_oracle._address_list_overlaps -- an incomplete request must not route.
+    request_parts = _split_values(request_value)
+    if not request_parts:
+        return False
     if _is_any(definition_value):
         return True
-    request_parts = _split_values(request_value)
     definition_parts = _split_values(definition_value)
     return any(_network_overlaps(left, right) for left in request_parts for right in definition_parts)
 
@@ -302,7 +307,20 @@ def _split_targets(value: str) -> list[str]:
 
 
 def _split_values(value: str) -> list[str]:
-    normalized = value.replace("\r\n", ";").replace("\r", ";").replace("\n", ";").replace(",", ";").replace(" ", ";")
+    # Normalize the same separators as VBA NormalizeListCell and
+    # route_oracle.split_address_list: NBSP, tab, CR/LF, comma, space, and the
+    # fullwidth comma/semicolon all delimit list tokens.
+    normalized = (
+        value.replace("\u00a0", " ")
+        .replace("\t", " ")
+        .replace("\r\n", ";")
+        .replace("\r", ";")
+        .replace("\n", ";")
+        .replace(",", ";")
+        .replace("\uff0c", ";")
+        .replace("\uff1b", ";")
+        .replace(" ", ";")
+    )
     return [part.strip() for part in normalized.split(";") if part.strip()]
 
 

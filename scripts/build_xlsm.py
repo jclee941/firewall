@@ -27,7 +27,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.workbook_contract import (
-    EXAMPLE_REQUEST_ROWS,
     FILTER_SHEETS,
     FIREWALLS,
     FIREWALL_RANGES,
@@ -46,7 +45,8 @@ from scripts.workbook_contract import (
     WEEKLY_REPORT,
     WIDTHS,
 )
-from scripts.secui_cli_seed import secui_cli_seed_rows
+from scripts.route_seed import request_seed_records, route_result_seed_rows
+from scripts.secui_cli_runtime import RequestRecord, secui_cli_rows
 from scripts.workbook_ux import apply_ux
 
 VBA_DIR = ROOT / "vba"
@@ -206,7 +206,8 @@ def main() -> int:
     for c, h in enumerate(REQUESTS_HEADERS, start=1):
         base.cell(row=_REQ_HEADER_ROW, column=c, value=h)
     tracking_rows: list[list[object]] = [list(REQUEST_TRACKING_HEADERS)]
-    for r, example in enumerate(EXAMPLE_REQUEST_ROWS, start=_REQ_DATA_START_ROW):
+    seed_requests: list[RequestRecord] = request_seed_records()
+    for r, example in enumerate(seed_requests, start=_REQ_DATA_START_ROW):
         for header in REQUESTS_HEADERS:
             example_key = {"출발지": "출발지IP", "목적지": "목적지IP"}.get(header, header)
             val = example.get(example_key)
@@ -239,8 +240,8 @@ def main() -> int:
     add("header_aliases", HEADER_ALIASES)
     add("processing_log", PROCESSING_LOG)
     add(REQUEST_TRACKING_SHEET, tracking_rows)
-    add("route_results", [ROUTE_RESULTS_HEADERS])
-    add("secui_cli", secui_cli_seed_rows())
+    add("route_results", route_result_seed_rows())
+    add("secui_cli", secui_cli_rows(seed_requests, FIREWALLS, FIREWALL_RANGES, VENDOR_CLI_TEMPLATES))
     add("vendor_cli_templates", VENDOR_CLI_TEMPLATES)
     add("service_catalog", SERVICE_CATALOG)
     # sample-request-format has a blank A column header
