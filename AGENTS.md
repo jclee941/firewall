@@ -68,7 +68,15 @@ Use committed `./.venv/bin/python`; pins in `requirements.txt` (`pyOpenVBA==2.0.
 4. request direction and range direction match, or either side is `BOTH`/blank.
 5. matches sort by `path_order`, row order, firewall name.
 
-Statuses are `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, plus duplicate markers from merge post-processing.
+Statuses are `OK`, `NO_MATCH`, `DIRECTION_MISMATCH`, `INVALID_ADDRESS`, plus duplicate markers from merge post-processing.
+
+## CIDR Overlap: single source of truth
+
+All IPv4 CIDR parsing/overlap lives in `firewall_policy/cidr.py` (strict IPv4 only; IPv6 is out of scope and treated as non-routable). `tests/route_oracle.py` (`ip_to_number`, `cidr_prefix_length`, `ranges_overlap`) and `scripts/secui_cli_seed.py` BOTH delegate to it; `vba/FirewallRouteAnalysis.bas` (`ParseOctet`, `IsStrictIpv4`, `IsInvalidAddress`) mirrors the same rules. Never reintroduce a second overlap/parse implementation (the old `ipaddress.ip_network` use in the SECUI seed caused IPv6/leading-zero divergence — a rule emitted for traffic the route analyzer rejected). IPv6, leading-zero octets (except literal `0`), out-of-range octets, extra-slash, and malformed values are INVALID, not silent no-match: the route analyzer emits `INVALID_ADDRESS` and the SECUI CLI skips the request. `tests/test_cidr_parity.py` locks oracle/CLI/cidr agreement; keep it passing on any change.
+
+A request is NON-ROUTABLE for SECUI emission when either side is BLANK or contains a non-strict-IPv4 token. The in-workbook SECUI converter mirrors the gate: `FirewallPolicyAutomation.bas` `SecuiRequestHasInvalidAddress` (used by `BuildSecuiCliServiceFanoutIndex`, `CollectSecuiCliRows`, `CopySecuiCliRows`) returns True for a blank OR invalid source/destination and is checked BEFORE expanding `대상방화벽`, so a stale/prefilled target can never emit a rule (a blank request would otherwise emit a bogus `ANY` rule). The Python mirror is `scripts/secui_cli_runtime._request_has_invalid_address`. Any new SECUI path that derives targets must call the same gate before matching.
+
+Known non-blocker (fails closed): an invalid CIDR typed into `firewall_ranges.source_cidr`/`destination_cidr` is treated as non-overlap, so it can cause operator-visible `NO_MATCH` without a specific "bad range definition" diagnostic. It never routes or emits unverifiable traffic. Promote to a separate workbook diagnostic if operators hit unexplained `NO_MATCH`; do not fold it into the overlap/security layer.
 
 ## Build Pipeline
 

@@ -61,6 +61,25 @@ def test_auto_run_suppresses_per_file_error_dialogs():
     assert "If Not mSuppressMessages Then MsgBox" in body
 
 
+def test_generated_workbook_binds_f9_to_full_output_workflow():
+    src = VBA_POLICY.read_text(encoding="utf-8")
+    body = _macro_body(src, "RunFirewallAutomationOutputs")
+    assert "AutoRunWorkbookOutputs" in body
+
+    _build_workbook()
+    from pyopenvba import excel as ex
+
+    workbook = ex.ExcelFile(str(XLSM))
+    try:
+        this_workbook = workbook.get_module("ThisWorkbook")
+    finally:
+        workbook.close()
+
+    assert 'Application.OnKey "{F9}", FirewallAutomationHotkeyTarget()' in this_workbook
+    assert 'Application.OnKey "{F9}"' in this_workbook
+    assert "'!RunFirewallAutomationOutputs" in this_workbook
+
+
 def test_runtime_vba_does_not_touch_excel_autofilter_state():
     src = VBA_POLICY.read_text(encoding="utf-8")
     assert ".AutoFilter" not in src

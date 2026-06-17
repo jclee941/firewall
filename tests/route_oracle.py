@@ -2,28 +2,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+# Single source of truth for IPv4 CIDR parsing/overlap. The oracle and the SECUI
+# CLI generator both delegate here so they can never drift again; the shipped VBA
+# macro mirrors the same strict-IPv4 rules.
+from firewall_policy import cidr
+
 
 def ip_to_number(ip_text: str) -> int:
-    parts = ip_text.strip().split(".")
-    if len(parts) != 4:
+    # Honor the strict-IPv4 contract from firewall_policy.cidr (no leading-zero
+    # octets except literal "0", 0..255, exactly 4 octets) so this helper cannot
+    # silently disagree with ranges_overlap / the SECUI CLI / VBA.
+    net = cidr.parse_ipv4_network(cidr.cidr_base_ip(ip_text))
+    if net is None:
         raise ValueError(f"Invalid IPv4 address: {ip_text}")
-    value = 0
-    for part in parts:
-        clean = part.strip()
-        if not clean.isdigit():
-            raise ValueError(f"Invalid IPv4 address: {ip_text}")
-        octet = int(clean)
-        if octet < 0 or octet > 255:
-            raise ValueError(f"Invalid IPv4 address: {ip_text}")
-        value = value * 256 + octet
-    return value
+    return net.start
 
 
 def cidr_prefix_length(cidr_text: str) -> int:
-    if "/" not in cidr_text:
-        return 32
-    prefix = int(cidr_text.split("/", 1)[1].strip())
-    if prefix < 0 or prefix > 32:
+    prefix = cidr.cidr_prefix_length(cidr_text)
+    if prefix is None:
         raise ValueError(f"Invalid CIDR prefix: {cidr_text}")
     return prefix
 
@@ -47,16 +44,10 @@ def cidr_end(cidr_text: str) -> int:
 
 
 def ranges_overlap(left_cidr: str, right_cidr: str) -> bool:
-    try:
-        if is_any_cidr(left_cidr) or is_any_cidr(right_cidr):
-            return True
-        if not left_cidr or not right_cidr:
-            return False
-        left_start, left_end = cidr_start(left_cidr), cidr_end(left_cidr)
-        right_start, right_end = cidr_start(right_cidr), cidr_end(right_cidr)
-        return left_start <= right_end and right_start <= left_end
-    except ValueError:
-        return False
+    # Delegate to the single source of truth so the route oracle and the SECUI
+    # CLI generator share one strict-IPv4 overlap definition (IPv6/leading-zero/
+    # malformed tokens never overlap; they are surfaced as INVALID_ADDRESS).
+    return cidr.ipv4_ranges_overlap(left_cidr, right_cidr)
 
 
 def is_any_cidr(text: str) -> bool:
@@ -194,6 +185,15 @@ class RouteEngine:
         return _normalize_direction_synonym(value)
 
     def analyze(self, src_ip: str, dst_ip: str, direction: str = "") -> RouteResult:
+        invalid = self._invalid_request_address(src_ip, dst_ip)
+        if invalid:
+            side, token = invalid
+            return RouteResult(
+                status="INVALID_ADDRESS",
+                validation_message=f"Invalid IPv4 address in request {side}: {token}",
+                match_details=f"source_ip={src_ip}; destination_ip={dst_ip}",
+            )
+
         flow_direction = self.normalize_direction(direction)
         if flow_direction == "#INVALID":
             return RouteResult(
@@ -241,6 +241,19 @@ class RouteEngine:
         if flow_direction == "BOTH" or rule_value == "BOTH":
             return True
         return rule_value == flow_direction
+
+    @staticmethod
+    def _invalid_request_address(src_ip: str, dst_ip: str) -> tuple[str, str] | None:
+        # Surface a malformed request IP (IPv6, leading-zero octets, garbage) as
+        # INVALID_ADDRESS instead of silently letting it resolve to NO_MATCH. A
+        # blank cell is handled downstream (matches nothing); ANY is a wildcard.
+        for side, value in (("source", src_ip), ("destination", dst_ip)):
+            for token in split_address_list(value):
+                if is_any_cidr(token):
+                    continue
+                if cidr.is_invalid_address(token):
+                    return side, token
+        return None
 
     @staticmethod
     def _address_list_overlaps(request_value: str, definition_value: str) -> bool:

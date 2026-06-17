@@ -9,7 +9,7 @@
 3. `settings.request_folder`에 신청서 폴더를 입력하거나 `SelectRequestFolder`로 선택합니다.
 4. 신청서 원본 또는 `requests`의 `대상방화벽`에 SECUI 장비명을 입력할 수 있습니다. 비워 두면 `firewall_ranges` 기준으로 자동 산출합니다.
 5. 통합 문서를 다시 열면 `Workbook_Open`이 신청서 통합, 경로탐색, `secui_cli` 출력을 자동 생성합니다.
-6. 자동 실행을 기다리지 않으려면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`, `AnalyzeRequestRoutes`, `ConvertRequestsToSecuiCli`를 순서대로 수동 실행합니다.
+6. 자동 실행을 기다리지 않으려면 `F9`를 누릅니다. `F9`는 신청서 파싱, 경로분석, SECUI CLI 생성을 한 번에 실행합니다.
 
 ## 매크로
 
@@ -17,6 +17,7 @@
 | --- | --- |
 | `SetupFirewallAutomationWorkbook` | 운영 시트 생성/초기화 |
 | `SelectRequestFolder` | 신청서 폴더 선택 |
+| `RunFirewallAutomationOutputs` | F9에서 실행하는 신청서 파싱, 경로분석, SECUI CLI 통합 실행 |
 | `MergeFirewallRequestFolder` | 신청서 폴더 통합 |
 | `AnalyzeRequestRoutes` | 추후 라우팅 검증용 수동 재분석 |
 | `ConvertRequestsToSecuiCli` | SECUI CLI 초안 생성 |

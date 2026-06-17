@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
+import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from openpyxl.utils.exceptions import InvalidFileException
+
 from firewall_policy.gui_export import ExportFormat, ExportRequest, SourceMode, run_export_request
+from firewall_policy.request_parser import RequestParseError
 
 DEFAULT_WORKBOOK = ROOT / "dist" / "firewall-policy-automation.xlsm"
 DEFAULT_FOLDER = ROOT / "request-folder"
@@ -166,7 +172,17 @@ class SecuiCliWindow:
             self._fail(str(exc))
             return
         except FileNotFoundError as exc:
-            self._fail(f"file not found: {exc.filename}")
+            self._fail(f"file not found: {exc.filename or exc}")
+            return
+        except (RequestParseError, zipfile.BadZipFile, InvalidFileException, KeyError, ET.ParseError) as exc:
+            self._fail(f"workbook/folder is unreadable: {exc}")
+            return
+        except OSError as exc:
+            self._fail(f"I/O error: {exc}")
+            return
+        except Exception as exc:  # last-resort safety net so the window never crashes
+            traceback.print_exc()
+            self._fail(f"unexpected error: {type(exc).__name__}: {exc}")
             return
         self.status.setPlainText("완료")
         self._message_box.information(self.widget, "Export 완료", "export 완료")

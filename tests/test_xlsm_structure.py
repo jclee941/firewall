@@ -737,6 +737,51 @@ def test_vba_address_overlap_treats_blank_ip_as_no_match():
         "empty-request guard must precede the ANY-definition short-circuit"
 
 
+def test_vba_cidr_prefix_rejects_extra_slash_segments():
+    """S6 parity: CidrPrefixLength must reject malformed CIDRs with extra slash
+    segments or non-digit prefixes (e.g. '10.0.0.1/24/garbage', '10.0.0.1/+24')
+    so VBA agrees with firewall_policy.cidr (which rejects them). The old
+    Split(cidrText, '/')(1) accepted the extra segment."""
+    src = open(VBA_ROUTE, encoding="utf-8").read().replace("\r\n", "\n")
+    fn = src[src.find("Private Function CidrPrefixLength"):]
+    fn = fn[:fn.find("\nEnd Function")]
+    # must count the slashes (reject >1) and validate digits, not just Split(...)( 1)
+    assert "UBound(" in fn, "CidrPrefixLength must reject CIDRs with more than one '/'"
+    assert ("IsNumeric" in fn or "InStr(\"0123456789\"" in fn or "ParseOctet" in fn
+            or "0123456789" in fn), \
+        "CidrPrefixLength must validate the prefix is digits-only"
+
+
+
+def test_vba_iptonumber_rejects_leading_zero_octets():
+    """S6 parity: the shipped VBA must reject leading-zero IPv4 octets (e.g.
+    '010.000.000.001') so it agrees with firewall_policy.cidr and the SECUI CLI.
+    Before the fix VBA's IsNumeric/CLng silently parsed leading zeros, diverging
+    from the strict-IPv4 contract."""
+    src = open(VBA_ROUTE, encoding="utf-8").read().replace("\r\n", "\n")
+    # The strict octet parser must explicitly reject a multi-char octet that
+    # starts with '0' (leading zero), while allowing the literal "0".
+    fn = src[src.find("Private Function ParseOctet"):]
+    fn = fn[:fn.find("\nEnd Function")]
+    assert fn, "VBA must have a strict ParseOctet helper"
+    assert "Len(" in fn and 'Left$' in fn, \
+        "ParseOctet must inspect octet length/leading char to ban leading zeros"
+    assert '"0"' in fn, "ParseOctet must special-case the literal '0' octet"
+    # IpToNumber must route every octet through the strict parser.
+    assert "ParseOctet(" in src[src.find("Private Function IpToNumber"):]
+
+
+def test_vba_classifies_invalid_address_status():
+    """S6 parity: AnalyzeRoute must surface a malformed request IP as an
+    INVALID_ADDRESS status (visible), not a silent NO_MATCH. Mirrors
+    RouteEngine.analyze in tests/route_oracle.py."""
+    src = open(VBA_ROUTE, encoding="utf-8").read().replace("\r\n", "\n")
+    assert '"INVALID_ADDRESS"' in src, \
+        "AnalyzeRoute must emit an INVALID_ADDRESS status for malformed request IPs"
+    assert "IsInvalidAddress" in src or "IsStrictIpv4" in src, \
+        "VBA must have a strict-IPv4 validity helper mirroring firewall_policy.cidr"
+
+
 def test_vba_find_header_row_is_content_based():
     """Parity: VBA header detection must score by FIELD CONTENT (IP columns +
     field count), not by an exact 'no'/'번호' cell match. The content scan lives

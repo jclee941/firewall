@@ -101,26 +101,49 @@ def _write_rows(ws, rows):
             if val is not None:
                 ws.cell(row=r, column=c, value=val)
 
-_AUTO_RUN_BODY = (
+_WORKBOOK_EVENTS_BODY = (
     "\r\n"
     "Private Sub Workbook_Open()\r\n"
-    "    ' Auto-run on open: integrate the request folder and refresh SECUI outputs.\r\n"
+    "    ' Auto-run on open and bind F9 to the same full output refresh.\r\n"
     "    On Error GoTo AutoRunErr\r\n"
+    "    RegisterFirewallAutomationHotkey\r\n"
     "    AutoRunWorkbookOutputs\r\n"
     "    Exit Sub\r\n"
     "AutoRunErr:\r\n"
     "    MsgBox \"\uc790\ub3d9 \ucd9c\ub825 \uc0dd\uc131 \uc911 \uc624\ub958: \" & Err.Description, vbExclamation\r\n"
     "End Sub\r\n"
+    "\r\n"
+    "Private Sub Workbook_Activate()\r\n"
+    "    RegisterFirewallAutomationHotkey\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub Workbook_Deactivate()\r\n"
+    "    UnregisterFirewallAutomationHotkey\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub Workbook_BeforeClose(Cancel As Boolean)\r\n"
+    "    UnregisterFirewallAutomationHotkey\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub RegisterFirewallAutomationHotkey()\r\n"
+    "    Application.OnKey \"{F9}\", FirewallAutomationHotkeyTarget()\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Sub UnregisterFirewallAutomationHotkey()\r\n"
+    "    Application.OnKey \"{F9}\"\r\n"
+    "End Sub\r\n"
+    "\r\n"
+    "Private Function FirewallAutomationHotkeyTarget() As String\r\n"
+    "    FirewallAutomationHotkeyTarget = \"'\" & Replace(ThisWorkbook.Name, \"'\", \"''\") & \"'!RunFirewallAutomationOutputs\"\r\n"
+    "End Function\r\n"
 )
 
 
-def _inject_auto_run(proj) -> None:
-    """Append Workbook_Open to the ThisWorkbook document module so the workbook
-    auto-integrates the request folder when opened (macros must be enabled)."""
+def _inject_workbook_events(proj) -> None:
     m = proj.get_module("ThisWorkbook")
     if "Workbook_Open" in m.source:
         return
-    m.source = m.source.rstrip("\r\n") + _AUTO_RUN_BODY
+    m.source = m.source.rstrip("\r\n") + _WORKBOOK_EVENTS_BODY
     m.dirty = True
 
 
@@ -174,7 +197,7 @@ def main() -> int:
     if "Module1" in proj.module_names():
         proj.delete_module("Module1")
     # auto-run on open: inject Workbook_Open into the ThisWorkbook document module
-    _inject_auto_run(proj)
+    _inject_workbook_events(proj)
     # CRITICAL: force the VBA project code page to 949 (Korean) so 한글 in the
     # module source—including FUNCTIONAL literals like headerMap("\ucd9c\ubc1c\uc9c0ip")—
     # survives. pyOpenVBA's create_new template hardcodes PROJECTCODEPAGE=1252 in

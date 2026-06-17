@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
 from typing import Final
 
 import openpyxl
+from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +20,7 @@ if str(ROOT) not in sys.path:
 from firewall_policy import request_parser
 from firewall_policy.folder_parse import parse_request_folder_name
 from firewall_policy.request_parser import (
+    RequestParseError,
     parse_request_sheet_exploded,
     select_request_sheet,
     sheet_to_filled_rows,
@@ -35,13 +39,28 @@ WORKBOOK_REQUEST_HEADER_MAP: Final = {
     "목적지": "목적지IP",
 }
 
+# Every way openpyxl can fail to open a workbook as a corrupt/invalid file:
+#   - BadZipFile: not a zip at all
+#   - InvalidFileException: openpyxl's own "not an xlsx" error
+#   - KeyError: zip-valid but missing OOXML parts (e.g. [Content_Types].xml)
+#   - ParseError: zip-valid but malformed workbook XML
+# These are treated as "unreadable workbook", never a stack trace.
+_WORKBOOK_OPEN_ERRORS: Final = (zipfile.BadZipFile, InvalidFileException, KeyError, ET.ParseError)
+
 
 def main() -> int:
     args = _parse_args()
     try:
         rows = _run(args)
     except FileNotFoundError as exc:
-        print(f"ERROR: file not found: {exc.filename}", file=sys.stderr)
+        name = exc.filename or (exc.args[0] if exc.args else str(exc))
+        print(f"ERROR: file not found: {name}", file=sys.stderr)
+        return 2
+    except _WORKBOOK_OPEN_ERRORS as exc:
+        print(f"ERROR: cannot open workbook (corrupt or not an xlsx/xlsm): {exc}", file=sys.stderr)
+        return 2
+    except RequestParseError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -127,13 +146,19 @@ def _requests_from_folder(folder: Path, parse_sheet: str, user_aliases: dict[str
     for path in sorted(folder.rglob("*.xlsx")):
         if path.name.startswith("~$") or "빈양식" in path.name:
             continue
-        wb = openpyxl.load_workbook(path, data_only=False)
         try:
-            named_rows = [(ws.title, sheet_to_filled_rows(ws, user_aliases)) for ws in wb.worksheets]
-            sheet_index = select_request_sheet(named_rows, parse_sheet, user_aliases)
-            parsed = parse_request_sheet_exploded(named_rows[sheet_index][1], user_aliases)
-        finally:
-            wb.close()
+            wb = openpyxl.load_workbook(path, data_only=False)
+            try:
+                named_rows = [(ws.title, sheet_to_filled_rows(ws, user_aliases)) for ws in wb.worksheets]
+                sheet_index = select_request_sheet(named_rows, parse_sheet, user_aliases)
+                parsed = parse_request_sheet_exploded(named_rows[sheet_index][1], user_aliases)
+            finally:
+                wb.close()
+        except (RequestParseError, *_WORKBOOK_OPEN_ERRORS, OSError) as exc:
+            # One unparseable/corrupt request file must NOT abort the whole batch;
+            # skip it with a warning so the remaining good files still produce rules.
+            print(f"WARNING: skipping {path}: {exc}", file=sys.stderr)
+            continue
         team, doc_no, title = parse_request_folder_name(path.parent.name)
         for request in parsed:
             records.append(_record_from_parsed_request(request, team, doc_no, title, path.name))

@@ -193,7 +193,32 @@ Private Sub LoadRouteData()
     Next rowIndex
 End Sub
 
+Private Function InvalidAddressResult(ByVal side As String, ByVal token As String, ByVal srcIp As String, ByVal dstIp As String) As Object
+    Dim res As Object
+    Set res = NewResult()
+    res("status") = "INVALID_ADDRESS"
+    res("validation_message") = "Invalid IPv4 address in request " & side & ": " & token
+    res("match_details") = "source_ip=" & srcIp & "; destination_ip=" & dstIp
+    Set InvalidAddressResult = res
+End Function
+
 Public Function AnalyzeRoute(ByVal srcIp As String, ByVal dstIp As String, ByVal direction As String) As Object
+    ' Surface a malformed request IP (IPv6, leading-zero octets, garbage) as a
+    ' visible INVALID_ADDRESS instead of a silent NO_MATCH, mirroring
+    ' RouteEngine.analyze in tests/route_oracle.py. Blank cells are handled
+    ' downstream (match nothing); ANY is a wildcard.
+    Dim badToken As String
+    badToken = FirstInvalidToken(srcIp)
+    If Len(badToken) > 0 Then
+        Set AnalyzeRoute = InvalidAddressResult("source", badToken, srcIp, dstIp)
+        Exit Function
+    End If
+    badToken = FirstInvalidToken(dstIp)
+    If Len(badToken) > 0 Then
+        Set AnalyzeRoute = InvalidAddressResult("destination", badToken, srcIp, dstIp)
+        Exit Function
+    End If
+
     Dim flowDirection As String
     flowDirection = NormalizeDirection(direction)
     If flowDirection = "#INVALID" Then
@@ -465,6 +490,44 @@ Private Function IsAnyCidr(ByVal text As String) As Boolean
                  value = "ALL" Or value = "0.0.0.0/0")
 End Function
 
+Private Function IsStrictIpv4(ByVal text As String) As Boolean
+    ' True when text parses as a strict IPv4 address or CIDR (the same contract
+    ' as firewall_policy.cidr.parse_ipv4_network). IPv6, leading-zero octets and
+    ' malformed values return False.
+    On Error GoTo bad
+    Dim base As String
+    base = CidrBaseIp(text)
+    Dim prefix As Long
+    prefix = CidrPrefixLength(text)   ' raises on a bad prefix
+    IpToNumber base                   ' raises on a bad address
+    IsStrictIpv4 = True
+    Exit Function
+bad:
+    IsStrictIpv4 = False
+End Function
+
+Private Function IsInvalidAddress(ByVal token As String) As Boolean
+    ' A concrete address token that fails the strict-IPv4 contract is invalid.
+    ' ANY/blank wildcards are NOT invalid (handled above the overlap layer).
+    If IsAnyCidr(token) Then Exit Function
+    IsInvalidAddress = Not IsStrictIpv4(token)
+End Function
+
+Private Function FirstInvalidToken(ByVal listValue As String) As String
+    ' Return the first non-ANY token in a list cell that is not strict IPv4,
+    ' else an empty string. Used to surface INVALID_ADDRESS.
+    Dim toks() As String
+    toks = SplitAddressList(listValue)
+    If UBound(toks) < LBound(toks) Then Exit Function
+    Dim i As Long
+    For i = LBound(toks) To UBound(toks)
+        If IsInvalidAddress(toks(i)) Then
+            FirstInvalidToken = toks(i)
+            Exit Function
+        End If
+    Next i
+End Function
+
 Private Function RangesOverlap(ByVal leftCidr As String, ByVal rightCidr As String) As Boolean
     On Error GoTo bad
     If IsAnyCidr(leftCidr) Or IsAnyCidr(rightCidr) Then
@@ -490,25 +553,51 @@ Private Function IpToNumber(ByVal ipText As String) As Double
     parts = Split(Trim$(ipText), ".")
     If UBound(parts) - LBound(parts) + 1 <> 4 Then Err.Raise 5
     Dim i As Long
-    Dim octet As Long
     Dim value As Double
     value = 0
     For i = 0 To 3
-        If Not IsNumeric(parts(i)) Then Err.Raise 5
-        octet = CLng(parts(i))
-        If octet < 0 Or octet > 255 Then Err.Raise 5
-        value = value * 256# + octet
+        value = value * 256# + ParseOctet(parts(i))
     Next i
     IpToNumber = value
 End Function
 
+Private Function ParseOctet(ByVal octetText As String) As Long
+    ' Strict IPv4 octet: digits only, 0..255, and NO leading zero (the literal
+    ' "0" is allowed). Mirrors firewall_policy.cidr._parse_octet so VBA, the
+    ' route oracle and the SECUI CLI agree exactly. Reject everything else.
+    Dim clean As String
+    clean = Trim$(octetText)
+    If Len(clean) = 0 Then Err.Raise 5
+    Dim j As Long
+    For j = 1 To Len(clean)
+        If InStr("0123456789", Mid$(clean, j, 1)) = 0 Then Err.Raise 5
+    Next j
+    If Len(clean) > 1 And Left$(clean, 1) = "0" Then Err.Raise 5
+    Dim octet As Long
+    octet = CLng(clean)
+    If octet < 0 Or octet > 255 Then Err.Raise 5
+    ParseOctet = octet
+End Function
+
 Private Function CidrPrefixLength(ByVal cidrText As String) As Long
-    If InStr(1, cidrText, "/", vbTextCompare) = 0 Then
+    Dim segs() As String
+    segs = Split(cidrText, "/")
+    If UBound(segs) = 0 Then
         CidrPrefixLength = 32
-    Else
-        CidrPrefixLength = CLng(Trim$(Split(cidrText, "/")(1)))
-        If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise 5
+        Exit Function
     End If
+    ' Exactly one '/' is allowed; '10.0.0.1/24/garbage' must be rejected so VBA
+    ' agrees with firewall_policy.cidr._prefix_length.
+    If UBound(segs) <> 1 Then Err.Raise 5
+    Dim raw As String
+    raw = Trim$(segs(1))
+    If Len(raw) = 0 Then Err.Raise 5
+    Dim k As Long
+    For k = 1 To Len(raw)
+        If InStr("0123456789", Mid$(raw, k, 1)) = 0 Then Err.Raise 5
+    Next k
+    CidrPrefixLength = CLng(raw)
+    If CidrPrefixLength < 0 Or CidrPrefixLength > 32 Then Err.Raise 5
 End Function
 
 Private Function CidrBaseIp(ByVal cidrText As String) As String

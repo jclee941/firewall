@@ -75,6 +75,11 @@ AutoRunFailed:
     Err.Raise Err.Number, Err.Source, Err.Description
 End Sub
 
+Public Sub RunFirewallAutomationOutputs()
+    AutoRunWorkbookOutputs
+    ShowInfo "F9 실행 완료: 신청서 파싱, 경로분석, SECUI CLI 생성을 완료했습니다."
+End Sub
+
 Public Sub SetupFirewallAutomationWorkbook()
     Dim requestsSheet As Worksheet
     Dim firewallsSheet As Worksheet
@@ -252,6 +257,15 @@ Private Function CopySecuiCliRows( _
     Dim firewallName As String
     Dim written As Long
 
+    ' SECURITY: skip a request whose source/destination is not strict IPv4 so no
+    ' SECUI rule is emitted from a stale/prefilled 대상방화벽 (mirrors the live
+    ' fanout/collect path and secui_cli_runtime._request_has_invalid_address).
+    If SecuiRequestHasInvalidAddress( _
+            CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value), _
+            CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value)) Then
+        CopySecuiCliRows = 0
+        Exit Function
+    End If
     targetFirewalls = Split(Trim$(CStr(requestsSheet.Cells(requestRow, COL_TARGET_FIREWALLS).Value)), ";")
     For Each firewallValue In targetFirewalls
         firewallName = Trim$(CStr(firewallValue))
@@ -286,6 +300,10 @@ Private Function BuildSecuiCliServiceFanoutIndex( _
     For requestRow = REQ_DATA_START_ROW To lastRow
         sourceAddress = CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value)
         destinationAddress = CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value)
+        ' SECURITY: skip a request whose source/destination is not strict IPv4
+        ' (IPv6, leading-zero octets, garbage) so no SECUI rule is emitted from a
+        ' stale/prefilled 대상방화벽 for traffic the route analyzer rejects.
+        If SecuiRequestHasInvalidAddress(sourceAddress, destinationAddress) Then GoTo NextFanoutRow
         sourceObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), sourceAddress)
         destinationObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), destinationAddress)
         serviceObject = SecuiCliServiceText(LCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value))), Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value)))
@@ -304,6 +322,7 @@ Private Function BuildSecuiCliServiceFanoutIndex( _
                 services(CleanSecuiText(serviceObject)) = True
             End If
         Next firewallValue
+NextFanoutRow:
     Next requestRow
     Set BuildSecuiCliServiceFanoutIndex = serviceFanoutIndex
 End Function
@@ -328,6 +347,10 @@ Private Sub CollectSecuiCliRows( _
 
     sourceAddress = CStr(requestsSheet.Cells(requestRow, COL_SOURCE_IP).Value)
     destinationAddress = CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_IP).Value)
+    ' SECURITY: skip a request whose source/destination is not strict IPv4 so no
+    ' SECUI rule is emitted from a stale/prefilled 대상방화벽. Mirrors
+    ' secui_cli_runtime._request_has_invalid_address.
+    If SecuiRequestHasInvalidAddress(sourceAddress, destinationAddress) Then Exit Sub
     sourceObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_SOURCE_NAME).Value), sourceAddress)
     destinationObject = SecuiCliAddressText(CStr(requestsSheet.Cells(requestRow, COL_DESTINATION_NAME).Value), destinationAddress)
     serviceObject = SecuiCliServiceText(LCase$(Trim$(CStr(requestsSheet.Cells(requestRow, COL_PROTOCOL).Value))), Trim$(CStr(requestsSheet.Cells(requestRow, COL_PORT).Value)))
@@ -766,11 +789,24 @@ Private Function SecuiCidrEnd(ByVal cidrText As String) As Double
 End Function
 
 Private Function SecuiCidrPrefix(ByVal cidrText As String) As Long
-    If InStr(cidrText, "/") = 0 Then
+    Dim segs() As String
+    segs = Split(cidrText, "/")
+    If UBound(segs) = 0 Then
         SecuiCidrPrefix = 32
-    Else
-        SecuiCidrPrefix = CLng(Trim$(Split(cidrText, "/")(1)))
+        Exit Function
     End If
+    ' Exactly one '/' allowed; non-digit / out-of-range prefixes are rejected so
+    ' the SECUI parser mirrors firewall_policy.cidr (strict IPv4).
+    If UBound(segs) <> 1 Then Err.Raise vbObjectError + 2002, , "Invalid CIDR prefix"
+    Dim raw As String
+    raw = Trim$(segs(1))
+    If Len(raw) = 0 Then Err.Raise vbObjectError + 2002, , "Invalid CIDR prefix"
+    Dim k As Long
+    For k = 1 To Len(raw)
+        If InStr("0123456789", Mid$(raw, k, 1)) = 0 Then Err.Raise vbObjectError + 2002, , "Invalid CIDR prefix"
+    Next k
+    SecuiCidrPrefix = CLng(raw)
+    If SecuiCidrPrefix < 0 Or SecuiCidrPrefix > 32 Then Err.Raise vbObjectError + 2002, , "Invalid CIDR prefix"
 End Function
 
 Private Function SecuiIpToNumber(ByVal ipText As String) As Double
@@ -780,9 +816,72 @@ Private Function SecuiIpToNumber(ByVal ipText As String) As Double
     parts = Split(Trim$(ipText), ".")
     If UBound(parts) <> 3 Then Err.Raise vbObjectError + 2001, , "Invalid IPv4 address"
     For index = 0 To 3
-        value = value * 256 + CDbl(parts(index))
+        value = value * 256 + SecuiParseOctet(CStr(parts(index)))
     Next index
     SecuiIpToNumber = value
+End Function
+
+Private Function SecuiParseOctet(ByVal octetText As String) As Long
+    ' Strict IPv4 octet (digits only, 0..255, no leading zero except literal '0'),
+    ' mirroring firewall_policy.cidr._parse_octet and route ParseOctet.
+    Dim clean As String
+    clean = Trim$(octetText)
+    If Len(clean) = 0 Then Err.Raise vbObjectError + 2001, , "Invalid IPv4 address"
+    Dim j As Long
+    For j = 1 To Len(clean)
+        If InStr("0123456789", Mid$(clean, j, 1)) = 0 Then Err.Raise vbObjectError + 2001, , "Invalid IPv4 address"
+    Next j
+    If Len(clean) > 1 And Left$(clean, 1) = "0" Then Err.Raise vbObjectError + 2001, , "Invalid IPv4 address"
+    Dim octet As Long
+    octet = CLng(clean)
+    If octet < 0 Or octet > 255 Then Err.Raise vbObjectError + 2001, , "Invalid IPv4 address"
+    SecuiParseOctet = octet
+End Function
+
+Private Function SecuiIsStrictIpv4(ByVal text As String) As Boolean
+    On Error GoTo bad
+    SecuiCidrPrefix text
+    SecuiIpToNumber Split(Trim$(text), "/")(0)
+    SecuiIsStrictIpv4 = True
+    Exit Function
+bad:
+    SecuiIsStrictIpv4 = False
+End Function
+
+Private Function SecuiIsInvalidAddress(ByVal token As String) As Boolean
+    ' A concrete non-ANY token that fails the strict-IPv4 contract is invalid.
+    If IsAnyPolicyValue(token) Then Exit Function
+    SecuiIsInvalidAddress = Not SecuiIsStrictIpv4(token)
+End Function
+
+Private Function SecuiFirstInvalidToken(ByVal listValue As String) As String
+    ' First non-ANY token in a list cell that is not strict IPv4, else empty.
+    Dim parts As Variant
+    Dim part As Variant
+    If Len(Trim$(NormalizeListCell(listValue))) = 0 Then Exit Function
+    parts = Split(NormalizeListCell(listValue), ";")
+    For Each part In parts
+        If Len(Trim$(CStr(part))) > 0 Then
+            If SecuiIsInvalidAddress(CStr(part)) Then
+                SecuiFirstInvalidToken = CStr(part)
+                Exit Function
+            End If
+        End If
+    Next part
+End Function
+
+Private Function SecuiRequestHasInvalidAddress(ByVal sourceAddress As String, ByVal destinationAddress As String) As Boolean
+    ' A request is non-routable for SECUI emission when either side is BLANK or
+    ' contains a non-strict-IPv4 token. The route analyzer returns NO_MATCH for a
+    ' blank and INVALID_ADDRESS for a malformed value; in BOTH cases no rule may
+    ' be emitted, even from a stale/prefilled 대상방화벽.
+    If Len(Trim$(NormalizeListCell(sourceAddress))) = 0 _
+            Or Len(Trim$(NormalizeListCell(destinationAddress))) = 0 Then
+        SecuiRequestHasInvalidAddress = True
+        Exit Function
+    End If
+    SecuiRequestHasInvalidAddress = (Len(SecuiFirstInvalidToken(sourceAddress)) > 0 _
+        Or Len(SecuiFirstInvalidToken(destinationAddress)) > 0)
 End Function
 
 Private Function SecuiObjectNameToken(ByVal value As String) As String

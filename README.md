@@ -17,7 +17,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 4. `settings` 시트의 `request_folder` 값에 신청서 폴더 경로를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
 5. 통합 문서를 다시 열면 `Workbook_Open`이 신청서 통합, 경로탐색, SECUI CLI 생성을 순서대로 자동 실행합니다.
 6. `requests`에서 최종 신청 목록을 확인하고, `route_results`에서 대상방화벽과 경로탐색 결과를 확인합니다.
-7. 수동 실행이 필요하면 Excel의 매크로 목록에서 `MergeFirewallRequestFolder`, `AnalyzeRequestRoutes`, `ConvertRequestsToSecuiCli`를 순서대로 실행합니다.
+7. 수동 실행이 필요하면 `F9`를 누릅니다. `F9`는 신청서 파싱, 경로분석, SECUI CLI 생성을 한 번에 실행합니다.
 
 ## 시트 한눈에 보기
 
@@ -89,6 +89,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 | `OK` | 하나 이상의 `firewall_ranges` 행이 매칭됨 |
 | `NO_MATCH` | 매칭되는 방화벽 대역 정의가 없음 |
 | `DIRECTION_MISMATCH` | 반대 방향 정의는 있으나 신청 방향과 맞지 않거나, 방향 값이 잘못됨 |
+| `INVALID_ADDRESS` | 신청 출발지/목적지 IP가 올바른 IPv4가 아님(IPv6, 0으로 시작하는 옥텟, 형식 오류 등). 라우팅하지 않고 SECUI CLI도 생성하지 않음 |
 | `DUPLICATE` | 같은 요청이 중복 후보로 표시됨. 라우트 상태 뒤에 병합될 수 있음 |
 
 ## requests / route_results 결과 컬럼

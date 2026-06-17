@@ -39,6 +39,16 @@ def test_ip_to_number():
     assert ip_to_number("10.10.10.5") == 168430085
 
 
+def test_ip_to_number_rejects_non_strict_ipv4():
+    # Single source of truth: ip_to_number must honor the strict-IPv4 contract
+    # from firewall_policy.cidr (no leading-zero octets, no out-of-range, no IPv6),
+    # so it cannot silently disagree with ranges_overlap / the SECUI CLI / VBA.
+    import pytest as _pytest
+    for bad in ("010.0.0.1", "10.0.0.256", "2001:db8::1", "10.0.0", "10.0.0.0.0"):
+        with _pytest.raises(ValueError):
+            ip_to_number(bad)
+
+
 def test_cidr_bounds():
     assert cidr_start("10.10.0.0/16") == ip_to_number("10.10.0.0")
     assert cidr_end("10.10.0.0/16") == ip_to_number("10.10.255.255")

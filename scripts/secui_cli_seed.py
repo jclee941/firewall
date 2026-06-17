@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from ipaddress import ip_network
 from typing import Final
+
+# Single source of truth for IPv4 CIDR overlap/validation, shared with the route
+# oracle and mirrored by the VBA macro. Replaces the previous direct use of
+# ipaddress.ip_network, which silently matched IPv6 and rejected leading-zero
+# octets -- a divergence that let the CLI emit rules the route analyzer rejected.
+from firewall_policy import cidr
 
 from scripts.workbook_contract import (
     EXAMPLE_REQUEST_ROWS,
@@ -241,10 +246,10 @@ def _overlaps(request_value: str, definition_value: str) -> bool:
 
 
 def _network_overlaps(left: str, right: str) -> bool:
-    try:
-        return ip_network(left, strict=False).overlaps(ip_network(right, strict=False))
-    except ValueError:
-        return False
+    # Delegate to the shared strict-IPv4 engine so the SECUI CLI and the route
+    # oracle agree exactly. IPv6 / leading-zero / malformed tokens never overlap
+    # here; _request_has_invalid_address surfaces them so the row is skipped.
+    return cidr.ipv4_ranges_overlap(left, right)
 
 
 def _direction_matches(rule_direction: str, request_direction: str) -> bool:
@@ -304,6 +309,19 @@ def _object_or_value(object_name: str, fallback: str) -> str:
 
 def _split_targets(value: str) -> list[str]:
     return [part.strip() for part in value.split(";") if part.strip()]
+
+
+def _has_invalid_address(value: str) -> bool:
+    # True when any non-blank, non-ANY token in the value is not a parseable
+    # strict IPv4 network (IPv6, leading-zero octets, garbage). Used to SKIP a
+    # request entirely so the CLI never emits a rule for traffic the route
+    # analyzer cannot verify (it would be flagged INVALID_ADDRESS there).
+    for token in _split_values(value):
+        if _is_any(token):
+            continue
+        if cidr.is_invalid_address(token):
+            return True
+    return False
 
 
 def _split_values(value: str) -> list[str]:

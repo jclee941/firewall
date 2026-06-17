@@ -28,7 +28,7 @@ Tests are the binding specification for the workbook and VBA behavior. They do n
 
 ## Invariants
 
-- `tests/route_oracle.py` is the route/range algorithm contract.
+- `tests/route_oracle.py` is the route/range algorithm contract, but IPv4 CIDR parse/overlap now delegates to `firewall_policy/cidr.py` (the single source of truth shared with `scripts/secui_cli_seed.py`). `tests/test_cidr_parity.py` locks oracle/CLI/cidr agreement and must stay green.
 - `tests/test_route_oracle.py` must cover every status and edge case the VBA route module implements.
 - `requests` is a clean 14-column user sheet; header row 2 must match `scripts.workbook_contract.REQUESTS_HEADERS`. Source tracking is on hidden `_request_tracking`; route diagnostics on `route_results`.
 - `대상방화벽` is column 3 in the built `requests` workbook; internal test/oracle field remains `target_firewalls`.

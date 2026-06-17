@@ -23,12 +23,14 @@ from scripts.secui_cli_seed import (
     _destination_service_key,
     _direction_matches,
     _enabled,
+    _has_invalid_address,
     _object_or_value,
     _overlaps,
     _seed_output_row,
     _service_text,
     _source_destination_key,
     _split_targets,
+    _split_values,
 )
 from scripts.workbook_contract import SECUI_CLI_HEADERS, VENDOR_CLI_TEMPLATES
 
@@ -50,6 +52,8 @@ def secui_cli_rows(
     service_index: dict[str, set[str]] = {}
 
     for request in requests:
+        if _request_has_invalid_address(request):
+            continue
         source_object = _request_source_object(request)
         destination_object = _request_destination_object(request)
         service_object = _request_service_object(request)
@@ -66,6 +70,8 @@ def secui_cli_rows(
             service_index.setdefault(key, set()).add(_clean(service_object))
 
     for request in requests:
+        if _request_has_invalid_address(request):
+            continue
         source_object = _request_source_object(request)
         destination_object = _request_destination_object(request)
         service_object = _request_service_object(request)
@@ -125,6 +131,23 @@ def _command_template(vendor_cli_templates: Table) -> str:
         if len(row) >= 4 and str(row[0]).strip().upper() == "SECUI" and _enabled(str(row[2])):
             return str(row[3])
     return str(VENDOR_CLI_TEMPLATES[1][3])
+
+
+def _request_has_invalid_address(request: RequestRecord) -> bool:
+    # Skip a request that is NON-ROUTABLE for SECUI emission: either side is
+    # blank, or contains a non-IPv4 token (IPv6, leading-zero octets, garbage).
+    # The route analyzer treats a blank as NO_MATCH and a malformed value as
+    # INVALID_ADDRESS; in BOTH cases the CLI must emit no rule, even when
+    # 대상방화벽 is prefilled (otherwise a stale target yields a bogus src/dst
+    # "ANY" rule for an incomplete request).
+    source = str(request.get(REQ_SOURCE_IP, "") or "")
+    destination = str(request.get(REQ_DESTINATION_IP, "") or "")
+    return (
+        not _split_values(source)
+        or not _split_values(destination)
+        or _has_invalid_address(source)
+        or _has_invalid_address(destination)
+    )
 
 
 def _request_source_object(request: RequestRecord) -> str:

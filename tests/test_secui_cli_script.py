@@ -194,3 +194,236 @@ def test_secui_split_values_matches_route_oracle_splitter(text: str) -> None:
     # route_oracle.split_address_list so SECUI matching does not silently miss tokens.
     assert _split_values(text) == split_address_list(text)
     assert _split_values(text) == ["10.0.0.1", "10.0.0.2"]
+
+
+@pytest.mark.parametrize("bad_ip", ["2001:db8::1", "010.000.000.001", "10.0.0.256"])
+def test_secui_cli_skips_invalid_request_even_with_prefilled_target(bad_ip: str) -> None:
+    # SECURITY: a request whose source/destination is not strict IPv4 must emit
+    # NO SECUI rule, EVEN when 대상방화벽 is prefilled/stale. The route analyzer
+    # would flag it INVALID_ADDRESS; the CLI must not emit unverifiable traffic.
+    requests: list[RequestRecord] = [
+        {
+            "요청부서": "정보보호센터",
+            "요청번호": "AUTO",
+            "원본파일": "prefilled.xlsx",
+            "원본행": 2,
+            "대상방화벽": "SECUI-FW-01;SECUI-FW-02",  # prefilled / stale target
+            "출발지IP": bad_ip,
+            "목적지IP": "10.20.20.5",
+            "프로토콜": "TCP",
+            "포트": "443",
+            "방향": "OUT",
+        },
+    ]
+    rows = secui_cli_rows(requests, FIREWALLS, FIREWALL_RANGES, VENDOR_CLI_TEMPLATES)
+    assert rows[1:] == [], f"invalid request {bad_ip} must emit no SECUI rule"
+
+
+@pytest.mark.parametrize("blank_field", ["출발지IP", "목적지IP"])
+def test_secui_cli_skips_blank_address_request_even_with_prefilled_target(blank_field: str) -> None:
+    # SECURITY: a request with a BLANK source or destination is non-routable (the
+    # route analyzer returns NO_MATCH). The SECUI CLI must emit NO rule even when
+    # 대상방화벽 is prefilled/stale -- otherwise it emits a bogus src/dst "ANY" rule
+    # for an incomplete request. Same failure class as the invalid-address skip.
+    base: RequestRecord = {
+        "요청부서": "정보보호센터",
+        "요청번호": "AUTO",
+        "원본파일": "prefilled.xlsx",
+        "원본행": 2,
+        "대상방화벽": "SECUI-FW-01;SECUI-FW-02",  # prefilled / stale target
+        "출발지IP": "10.10.10.5",
+        "목적지IP": "10.20.20.5",
+        "프로토콜": "TCP",
+        "포트": "443",
+        "방향": "OUT",
+    }
+    base[blank_field] = ""
+    rows = secui_cli_rows([base], FIREWALLS, FIREWALL_RANGES, VENDOR_CLI_TEMPLATES)
+    assert rows[1:] == [], f"blank {blank_field} must emit no SECUI rule even with prefilled target"
+
+
+def test_vba_secui_converter_skips_invalid_request_addresses() -> None:
+    # S6 parity: the in-workbook SECUI converter (FirewallPolicyAutomation.bas)
+    # must also skip rows whose source/destination is not strict IPv4, mirroring
+    # secui_cli_runtime._request_has_invalid_address. Otherwise a stale 대상방화벽
+    # lets ConvertRequestsToSecuiCli emit a rule the route analyzer rejected.
+    import os
+
+    root = Path(__file__).resolve().parents[1]
+    src = open(os.path.join(root, "vba", "FirewallPolicyAutomation.bas"), encoding="utf-8").read()
+    assert "SecuiIsInvalidAddress" in src or "SecuiFirstInvalidToken" in src, \
+        "SECUI converter must have a strict-IPv4 invalid-address helper"
+    # the strict octet parser must be reused, not the old lax CDbl path
+    assert "SecuiParseOctet" in src, "SecuiIpToNumber must use a strict octet parser"
+    assert "CDbl(parts(index))" not in src, "old lax SecuiIpToNumber CDbl path must be gone"
+    # EVERY SECUI emission path that reads the prefilled 대상방화벽 must guard
+    # invalid-address requests before emitting: the live fanout/collect path AND
+    # the tracked CopySecuiCliRows surface.
+    def _body(start_marker: str, end_marker: str) -> str:
+        seg = src[src.find(start_marker):]
+        return seg[:seg.find(end_marker)]
+
+    fanout = _body("Private Function BuildSecuiCliServiceFanoutIndex", "End Function")
+    collect = _body("Private Sub CollectSecuiCliRows", "End Sub")
+    copy = _body("Private Function CopySecuiCliRows", "End Function")
+    assert "SecuiRequestHasInvalidAddress" in fanout, \
+        "BuildSecuiCliServiceFanoutIndex must skip invalid-address requests"
+    assert "SecuiRequestHasInvalidAddress" in collect, \
+        "CollectSecuiCliRows must skip invalid-address requests"
+    assert "SecuiRequestHasInvalidAddress" in copy, \
+        "CopySecuiCliRows must skip invalid-address requests"
+    # The guard must reject BLANK addresses too, not just malformed ones, so a
+    # stale/prefilled target on an incomplete request cannot emit a bogus ANY rule.
+    guard = _body("Private Function SecuiRequestHasInvalidAddress", "End Function")
+    assert "NormalizeListCell(sourceAddress)" in guard and "NormalizeListCell(destinationAddress)" in guard, \
+        "SecuiRequestHasInvalidAddress must treat a blank source/destination as non-routable"
+    assert "Len(Trim$(NormalizeListCell(sourceAddress))) = 0" in guard, \
+        "SecuiRequestHasInvalidAddress must short-circuit True on a blank address"
+
+
+# ---------------------------------------------------------------------------
+# Operational robustness: a corrupt workbook or one bad file in a batch must not
+# crash the CLI with a stack trace or abort the whole run.
+# ---------------------------------------------------------------------------
+
+
+def test_secui_cli_corrupt_workbook_fails_cleanly(tmp_path: Path) -> None:
+    # F1: a corrupt/non-xlsx workbook must produce a clean rc=2 error message,
+    # not an uncaught zipfile.BadZipFile / InvalidFileException stack trace.
+    bad = tmp_path / "garbage.xlsm"
+    bad.write_bytes(b"this is not a zip file")
+    result = subprocess.run(
+        [PY, str(ROOT / "scripts" / "secui_cli.py"), "--workbook", str(bad), "--format", "text"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert "Traceback" not in result.stderr, f"must not leak a stack trace: {result.stderr}"
+    assert "ERROR" in result.stderr
+
+
+def test_secui_cli_folder_skips_one_bad_file_and_keeps_good(tmp_path: Path) -> None:
+    # F2: a folder with one unparseable .xlsx and one good one must NOT abort the
+    # whole batch. The good file's rules must still be emitted; the bad file is
+    # skipped with a warning. (Single bad file aborting the batch was the bug.)
+    good_dir = tmp_path / "정보보호센터_1234"
+    good_dir.mkdir(parents=True)
+    good = good_dir / "신청.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.append(["No", "출발지IP", "목적지IP", "프로토콜", "포트", "방향"])
+    ws.append([1, "10.10.10.5", "10.20.20.5", "TCP", "443", "OUT"])
+    wb.save(good)
+    wb.close()
+
+    bad_dir = tmp_path / "의미없는팀_9999"
+    bad_dir.mkdir(parents=True)
+    bad = bad_dir / "깨진신청.xlsx"
+    bad.write_bytes(b"definitely not a zip")
+
+    text_output = tmp_path / "secui.txt"
+    result = subprocess.run(
+        [
+            PY, str(ROOT / "scripts" / "secui_cli.py"),
+            "--request-folder", str(tmp_path),
+            "--output", str(text_output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+    text = text_output.read_text(encoding="utf-8")
+    assert "fw set srule" in text, "the good request file's rule must still be emitted"
+    assert "깨진신청.xlsx" in result.stderr or "WARNING" in result.stderr, \
+        "the skipped bad file should be reported as a warning"
+
+
+def test_gui_export_catches_broad_failure_surface() -> None:
+    # F3: the GUI _export handler must not crash the window on the common error
+    # classes that are NOT ValueError/FileNotFoundError: RequestParseError (a bad
+    # request file), corrupt-workbook (BadZipFile / InvalidFileException), and OSError.
+    import os
+
+    root = Path(__file__).resolve().parents[1]
+    src = open(os.path.join(root, "scripts", "secui_gui.py"), encoding="utf-8").read()
+    export = src[src.find("def _export"):]
+    export = export[:export.find("\n    def ", 1)]
+    assert "RequestParseError" in export, "_export must catch RequestParseError (bad request file)"
+    assert "BadZipFile" in export or "InvalidFileException" in export, \
+        "_export must catch corrupt-workbook errors"
+    # zip-valid-but-bad xlsx raises KeyError / xml ParseError -- these must be in
+    # the intentional 'unreadable' path, not only the last-resort Exception net.
+    assert "KeyError" in export and "ParseError" in export, \
+        "_export must catch zip-valid-but-malformed workbook errors (KeyError/ParseError)"
+    assert "OSError" in export, "_export must catch I/O errors"
+    assert "except Exception" in export, "_export must have a last-resort safety net"
+    # ordering: FileNotFoundError (an OSError subclass) must be caught BEFORE the
+    # broad OSError clause, else it would be shadowed.
+    assert export.find("except FileNotFoundError") < export.find("except OSError"), \
+        "FileNotFoundError must be handled before the broad OSError clause"
+    # and the last-resort Exception must come last.
+    assert export.find("except OSError") < export.find("except Exception"), \
+        "the last-resort Exception net must be the final handler"
+
+
+import zipfile as _zipfile
+
+
+def _make_zip_valid_but_bad_xlsx(path: Path) -> None:
+    # A valid zip that is NOT a valid xlsx (missing OOXML parts). openpyxl raises
+    # KeyError ('no item named [Content_Types].xml') -- NOT BadZipFile.
+    with _zipfile.ZipFile(path, "w") as z:
+        z.writestr("hello.txt", "not an xlsx")
+
+
+def test_secui_cli_zip_valid_but_bad_xlsx_fails_cleanly(tmp_path: Path) -> None:
+    # F1 (broadened): a zip-valid-but-structurally-invalid .xlsx must still exit
+    # rc=2 with a clean message, not an uncaught KeyError/ParseError traceback.
+    bad = tmp_path / "bad-ooxml.xlsx"
+    _make_zip_valid_but_bad_xlsx(bad)
+    result = subprocess.run(
+        [PY, str(ROOT / "scripts" / "secui_cli.py"), "--workbook", str(bad), "--format", "text"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert "Traceback" not in result.stderr, f"must not leak a stack trace: {result.stderr}"
+    assert "ERROR" in result.stderr
+
+
+def test_secui_cli_folder_skips_zip_valid_but_bad_xlsx(tmp_path: Path) -> None:
+    # F2 (broadened): a zip-valid-but-bad .xlsx in the batch must be skipped, not
+    # abort the whole run with an uncaught KeyError.
+    good_dir = tmp_path / "정보보호센터_1234"
+    good_dir.mkdir(parents=True)
+    good = good_dir / "신청.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    assert ws is not None
+    ws.append(["No", "출발지IP", "목적지IP", "프로토콜", "포트", "방향"])
+    ws.append([1, "10.10.10.5", "10.20.20.5", "TCP", "443", "OUT"])
+    wb.save(good)
+    wb.close()
+    bad_dir = tmp_path / "깨진팀_9999"
+    bad_dir.mkdir(parents=True)
+    _make_zip_valid_but_bad_xlsx(bad_dir / "깨진.xlsx")
+    text_output = tmp_path / "secui.txt"
+    result = subprocess.run(
+        [
+            PY, str(ROOT / "scripts" / "secui_cli.py"),
+            "--request-folder", str(tmp_path),
+            "--output", str(text_output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+    assert "fw set srule" in text_output.read_text(encoding="utf-8")
+    assert "WARNING" in result.stderr
