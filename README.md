@@ -29,7 +29,6 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 | `firewall_ranges` | 방화벽별 출발지/목적지 통과 대역 정의 |
 | `settings` | 신청서 폴더, 파싱 대상 시트, 헤더 별칭 |
 | `header_aliases` | 표준이 아닌 신청서 헤더 매핑 |
-| `secui_policy_export` | SECUI 기존 정책 export 붙여넣기 |
 | `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
 | `service_catalog` | SECUI 서비스 표기 예시(`tcp/443`, `udp/53` 등) |
 
@@ -106,7 +105,7 @@ DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서
 
 `service_catalog` 시트는 자주 쓰는 SECUI 서비스 표기 예시를 제공합니다. `프로토콜`은 기존 드롭다운을 유지하고, `포트` 입력은 제한하지 않으므로 목록에 없는 포트도 기존처럼 직접 입력할 수 있습니다.
 
-CLI 명령은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`을 신청서 데이터로 치환해 만듭니다. 기본 placeholder는 `{policy_name_q}`, `{source_ip_q}`, `{destination_ip_q}`, `{service_q}`, `{description_q}`, `{firewall_name}`이며, `_q`가 붙은 값은 CLI용 따옴표로 감싼 값입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
+CLI 명령은 `vendor_cli_templates` 시트의 `vendor=SECUI`, `enabled=Y` 행에 있는 `command_template`을 신청서 데이터로 치환해 만듭니다. 기본 placeholder는 `{policy_name_q}`, `{source_interface_q}`, `{destination_interface_q}`, `{source_object_q}`, `{destination_object_q}`, `{service_object_q}`, `{description_q}`, `{firewall_name}`이며, `_q`가 붙은 값은 CLI용 따옴표로 감싼 값입니다. 실제 장비 적용 전 대상 장비에서 `fw set srule help`로 옵션명을 확인하세요.
 
 ## 개발
 
