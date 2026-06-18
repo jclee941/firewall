@@ -75,6 +75,8 @@ def test_generated_workbook_binds_f9_to_full_output_workflow():
     finally:
         workbook.close()
 
+    assert this_workbook.count("Private Sub Workbook_Open()") == 1
+    assert this_workbook.count('Application.OnKey "{F9}", FirewallAutomationHotkeyTarget()') == 1
     assert 'Application.OnKey "{F9}", FirewallAutomationHotkeyTarget()' in this_workbook
     assert 'Application.OnKey "{F9}"' in this_workbook
     assert "'!RunFirewallAutomationOutputs" in this_workbook

@@ -24,11 +24,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XLSM = os.path.join(ROOT, "dist", "firewall-policy-automation.xlsm")
 PY = sys.executable
 
-CLEAN_REQUESTS_HEADERS = [
-    "요청부서", "요청번호", "대상방화벽", "출발지", "출발지설명", "목적지", "목적지설명",
-    "프로토콜", "포트", "방향", "용도", "시작일", "종료일", "비고",
-]
-
 REMOVED_REQUESTS_HEADERS = {
     "원본파일", "원본행", "제목", "검증상태", "검증메시지", "방화벽경로", "출발매칭대역",
     "목적매칭대역", "대역경로", "매칭근거", "요청폴더",
@@ -36,6 +31,21 @@ REMOVED_REQUESTS_HEADERS = {
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from scripts.workbook_contract import (  # noqa: E402
+    FIREWALLS,
+    FIREWALL_RANGES,
+    HEADER_ALIASES,
+    OPERATOR_VISIBLE_SHEETS,
+    PROCESSING_LOG,
+    REQUESTS_HEADERS,
+    ROUTE_RESULTS_HEADERS,
+    SECUI_CLI_HEADERS,
+    SERVICE_CATALOG,
+    SETTINGS,
+    SUPPORT_DATA_SHEETS,
+    USAGE,
+    VENDOR_CLI_TEMPLATES,
+)
 from tests.route_oracle import Firewall, FirewallRange, RouteEngine  # noqa: E402
 
 
@@ -94,26 +104,16 @@ def test_sheets_and_headers(xlsm_path):
 
     # Exact header row per sheet. None of these may silently drift.
     expected_headers = {
-        "firewalls": ["firewall_name", "vendor", "enabled", "comment"],
-        "firewall_ranges": ["firewall_name", "source_cidr", "destination_cidr",
-                            "direction", "path_order", "enabled", "comment",
-                            "source_interface", "destination_interface", "source_zone", "destination_zone"],
-        "settings": ["key", "value", "\uc124\uba85"],
-        "header_aliases": ["standard", "your_column", "\uc124\uba85"],
-        "processing_log": ["processed_at", "source_file", "status", "merged_rows", "message"],
-        "route_results": [
-            "요청부서", "요청번호", "출발지", "출발지설명", "목적지", "목적지설명",
-            "프로토콜", "포트", "방향", "대상방화벽", "검증상태", "검증메시지",
-            "방화벽경로", "출발매칭대역", "목적매칭대역", "대역경로", "매칭근거",
-            "원본파일", "원본행",
-        ],
-        "secui_cli": [
-            "No", "\uc7a5\ube44\uba85", "\uc815\ucc45\uba85", "\uba85\ub839\uc5b4", "\uac80\ud1a0\uba54\ubaa8",
-            "\uc2e0\uccad\ubd80\uc11c", "\uc2e0\uccad\ubc88\ud638", "\uc6d0\ubcf8\ud30c\uc77c", "\uc6d0\ubcf8\ud589",
-        ],
-        "vendor_cli_templates": ["vendor", "template_name", "enabled", "command_template", "review_note"],
-        "service_catalog": ["service_name", "protocol", "port", "secui_service", "description"],
-        "usage": ["Step", "Action"],
+        "firewalls": FIREWALLS[0],
+        "firewall_ranges": FIREWALL_RANGES[0],
+        "settings": SETTINGS[0],
+        "header_aliases": HEADER_ALIASES[0],
+        "processing_log": PROCESSING_LOG[0],
+        "route_results": ROUTE_RESULTS_HEADERS,
+        "secui_cli": SECUI_CLI_HEADERS,
+        "vendor_cli_templates": VENDOR_CLI_TEMPLATES[0],
+        "service_catalog": SERVICE_CATALOG[0],
+        "usage": USAGE[0],
     }
     for sheet, headers in expected_headers.items():
         ws = wb[sheet]
@@ -121,14 +121,15 @@ def test_sheets_and_headers(xlsm_path):
         assert actual == headers, f"{sheet} header drift: {actual!r}"
 
     req = wb["requests"]
-    assert req.max_column == len(CLEAN_REQUESTS_HEADERS), f"requests max_column={req.max_column}"
-    actual_req = [req.cell(2, c).value for c in range(1, len(CLEAN_REQUESTS_HEADERS) + 1)]
-    assert actual_req == CLEAN_REQUESTS_HEADERS, f"requests header drift: {actual_req!r}"
+    assert req.max_column == len(REQUESTS_HEADERS), f"requests max_column={req.max_column}"
+    actual_req = [req.cell(2, c).value for c in range(1, len(REQUESTS_HEADERS) + 1)]
+    assert actual_req == REQUESTS_HEADERS, f"requests header drift: {actual_req!r}"
     all_request_headers = [req.cell(2, c).value for c in range(1, req.max_column + 1)]
     leaked_headers = REMOVED_REQUESTS_HEADERS.intersection(all_request_headers)
     assert not leaked_headers, f"requests still exposes tracking/internal headers: {sorted(leaked_headers)!r}"
     assert req.cell(2, 3).value == "\ub300\uc0c1\ubc29\ud654\ubcbd"
     route_results_headers = [wb["route_results"].cell(1, c).value for c in range(1, wb["route_results"].max_column + 1)]
+    assert route_results_headers == ROUTE_RESULTS_HEADERS
     assert "원본파일" in route_results_headers
     assert "원본행" in route_results_headers
     # row-1 cosmetic group labels: 출발지 over IP+설명, 목적지 over IP+설명, merged.
@@ -149,23 +150,8 @@ def test_sheets_and_headers(xlsm_path):
 def test_operator_workbook_shows_only_work_sheets(xlsm_path):
     wb = openpyxl.load_workbook(xlsm_path, keep_vba=True)
 
-    visible_sheets = {
-        "usage",
-        "주간보고",
-        "requests",
-        "route_results",
-        "settings",
-        "firewalls",
-        "firewall_ranges",
-        "secui_cli",
-        "vendor_cli_templates",
-    }
-    support_data_sheets = {
-        "header_aliases",
-        "processing_log",
-        "service_catalog",
-        "sample-request-format",
-    }
+    visible_sheets = OPERATOR_VISIBLE_SHEETS
+    support_data_sheets = SUPPORT_DATA_SHEETS
 
     assert {
         name
