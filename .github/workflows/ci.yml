@@ -11,7 +11,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: write
 
 jobs:
@@ -108,4 +107,3 @@ jobs:
           fi
           git tag "$next"
           git push origin "$next"
-          gh workflow run release.yml --ref master -f tag="$next"
