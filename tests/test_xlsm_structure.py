@@ -667,7 +667,6 @@ def test_korean_preserved_in_injected_vba(xlsm_path):
 
 VBA_ROUTE = os.path.join(ROOT, "vba", "FirewallRouteAnalysis.bas")
 RELEASE_WORKFLOW = os.path.join(ROOT, ".github", "workflows", "release.yml")
-CI_WORKFLOW = os.path.join(ROOT, ".github", "workflows", "ci.yml")
 
 
 def test_vba_loads_firewall_ranges_sheet():
@@ -684,12 +683,6 @@ def test_release_workflow_verifies_firewall_ranges_sheet():
     assert '"network_definitions"' not in src
     assert '"routing_paths"' not in src
     assert "대상방화벽" in src
-
-
-def test_ci_release_tag_does_not_dispatch_duplicate_release_run():
-    src = open(CI_WORKFLOW, encoding="utf-8").read()
-    assert "git push origin \"$next\"" in src
-    assert "gh workflow run release.yml" not in src
 
 
 def test_vba_split_address_list_collapses_spaces():

@@ -24,6 +24,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^[v][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release tag must match vMAJOR.MINOR.PATCH: $TAG"
+            exit 1
+          fi
+          git fetch --tags --force
+          tag_sha="$(git rev-list -n 1 "$TAG")"
+          head_sha="$(git rev-parse HEAD)"
+          if [ "$tag_sha" != "$head_sha" ]; then
+            echo "::error::tag $TAG does not match checked-out commit"
+            exit 1
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -93,15 +120,6 @@ jobs:
           pip install pyinstaller
           python scripts/build_standalone_gui.py --output secui-gui-linux-x64.zip
           test -f secui-gui-linux-x64.zip
-
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Version-stamp the artifact filenames
         run: |
@@ -188,6 +206,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^[v][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release tag must match vMAJOR.MINOR.PATCH: $TAG"
+            exit 1
+          fi
+          git fetch --tags --force
+          tag_sha="$(git rev-list -n 1 "$TAG")"
+          head_sha="$(git rev-parse HEAD)"
+          if [ "$tag_sha" != "$head_sha" ]; then
+            echo "::error::tag $TAG does not match checked-out commit"
+            exit 1
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -207,16 +252,6 @@ jobs:
         run: |
           python scripts/build_standalone_gui.py --output secui-gui-windows-x64.zip
           if (!(Test-Path secui-gui-windows-x64.zip)) { throw "standalone zip missing" }
-
-      - name: Resolve tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Upload no-Python Windows GUI bundle
         env:
