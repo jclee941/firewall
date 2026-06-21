@@ -13,7 +13,6 @@ PY = sys.executable
 
 def test_release_bundle_contains_gui_cli_and_offline_dependency_layout(tmp_path: Path) -> None:
     subprocess.run([PY, str(ROOT / "scripts" / "build_xlsm.py")], cwd=ROOT, check=True)
-    subprocess.run([PY, str(ROOT / "scripts" / "make_request_folder.py")], cwd=ROOT, check=True)
     output = tmp_path / "secui-cli-gui-release.zip"
 
     result = subprocess.run(
@@ -48,7 +47,6 @@ def test_release_bundle_contains_gui_cli_and_offline_dependency_layout(tmp_path:
 
 def test_standalone_gui_zip_stages_runtime_files_with_fake_executable(tmp_path: Path) -> None:
     subprocess.run([PY, str(ROOT / "scripts" / "build_xlsm.py")], cwd=ROOT, check=True)
-    subprocess.run([PY, str(ROOT / "scripts" / "make_request_folder.py")], cwd=ROOT, check=True)
 
     stage = tmp_path / "secui-gui-standalone"
     dist = stage / "_pyinstaller_dist"

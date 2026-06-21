@@ -2,12 +2,13 @@ import glob
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import openpyxl
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REQ_DIR = os.path.join(ROOT, "request-folder")
+ROOT_PATH = Path(ROOT)
 PY = sys.executable
 
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -16,13 +17,28 @@ from tests.request_parser_oracle import parse_request_sheet, sheet_to_filled_row
 
 
 @pytest.fixture(scope="module")
-def request_tree():
+def request_tree(tmp_path_factory):
+    out_dir = tmp_path_factory.mktemp("request-folder-output") / "request-folder"
     subprocess.run(
-        [PY, os.path.join(ROOT, "scripts", "make_request_folder.py")],
+        [PY, os.path.join(ROOT, "scripts", "make_request_folder.py"), "--output", str(out_dir)],
         cwd=ROOT, check=True, capture_output=True, text=True,
     )
-    assert os.path.isdir(REQ_DIR)
-    return REQ_DIR
+    assert out_dir.is_dir()
+    return str(out_dir)
+
+
+def test_help_exposes_output_without_writing_default_folder():
+    default_xlsx = sorted((ROOT_PATH / "request-folder").glob("**/*.xlsx"))
+    assert default_xlsx, "default request-folder workbooks missing"
+    before = {path: path.stat().st_mtime_ns for path in default_xlsx}
+
+    result = subprocess.run(
+        [PY, os.path.join(ROOT, "scripts", "make_request_folder.py"), "--help"],
+        cwd=ROOT, check=True, capture_output=True, text=True,
+    )
+
+    assert "--output" in result.stdout
+    assert {path: path.stat().st_mtime_ns for path in default_xlsx} == before
 
 
 def test_tree_structure(request_tree):

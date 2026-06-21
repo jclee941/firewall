@@ -13,6 +13,7 @@ Each .xlsx matches what the VBA parser reads:
 
 Run:
   ./.venv/bin/python scripts/make_request_folder.py
+  ./.venv/bin/python scripts/make_request_folder.py --output /tmp/request-folder
 Output:
   request-folder/README.txt
   request-folder/_빈양식/신청서_빈양식.xlsx   (header-only template to copy)
@@ -21,6 +22,7 @@ Output:
 
 from __future__ import annotations
 
+import argparse
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -30,8 +32,14 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "request-folder"
+DEFAULT_OUT = ROOT / "request-folder"
 CellValue = str | int | None
+
+
+class ActiveWorksheetMissingError(RuntimeError):
+    def __str__(self) -> str:
+        return "active worksheet missing"
+
 
 HEADER = [
     None, "No", "대상방화벽", "출발지IP", "출발지", "목적지IP", "목적지",
@@ -83,7 +91,7 @@ def _write_request_file(path: Path, rows: Sequence[Sequence[CellValue]]) -> None
     wb = openpyxl.Workbook()
     ws = wb.active
     if ws is None:
-        raise RuntimeError("active worksheet missing")
+        raise ActiveWorksheetMissingError()
     ws.title = "firewall_requests"
     for c, val in enumerate(HEADER, start=1):
         if val is not None:
@@ -127,18 +135,34 @@ request-folder — 신청서를 넣는 폴더
 """
 
 
-def main() -> int:
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    OUT.mkdir(parents=True)
-    (OUT / "README.txt").write_text(README, encoding="utf-8")
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scaffold the request-folder tree.")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_OUT,
+        help=f"Output folder path (default: {DEFAULT_OUT}).",
+    )
+    return parser.parse_args(argv)
+
+
+def _build_request_folder(output_path: Path) -> int:
+    if output_path.exists():
+        shutil.rmtree(output_path)
+    output_path.mkdir(parents=True)
+    (output_path / "README.txt").write_text(README, encoding="utf-8")
     files = 0
     for folder, fname, rows in REQUESTS:
-        _write_request_file(OUT / folder / fname, rows)
+        _write_request_file(output_path / folder / fname, rows)
         files += 1
-    _write_request_file(OUT / TEMPLATE_FOLDER / TEMPLATE_FILE, [])
-    print(f"Built {OUT} ({files} request files + 1 빈 템플릿 in {len(REQUESTS)} team folders)")
+    _write_request_file(output_path / TEMPLATE_FOLDER / TEMPLATE_FILE, [])
+    print(f"Built {output_path} ({files} request files + 1 빈 템플릿 in {len(REQUESTS)} team folders)")
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
+    return _build_request_folder(args.output)
 
 
 if __name__ == "__main__":
