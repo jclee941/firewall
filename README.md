@@ -1,179 +1,234 @@
-# Firewall Policy Automation | 방화벽 정책 자동화
+# 방화벽 정책 자동화 (Firewall Policy Automation)
 
-DRM 환경에서 PowerQuery 없이 Excel VBA만으로 방화벽 정책 신청서를 통합하고, 사용자 정의 방화벽 통과 대역 기준으로 대상방화벽을 계산하는 Excel 네이티브 도구입니다.
-
-![platform](https://img.shields.io/badge/platform-Excel%20%2B%20Linux-1f6feb)
-![runtime](https://img.shields.io/badge/runtime-VBA%20%2B%20Python%203-3776AB)
-![build](https://img.shields.io/badge/build-Linux%20only-3DDC84)
-![license](https://img.shields.io/badge/license-see%20LICENSE-lightgrey)
+[![Build](https://img.shields.io/badge/build-Linux-blue.svg)](#quickstart)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](#quickstart)
+[![License](https://img.shields.io/badge/license-Internal-lightgrey.svg)](#license)
+[![Macro](https://img.shields.io/badge/macro-.xlsm-217346.svg)](#package-contents)
 
 ## 한국어 요약
 
-`firewalls`와 `firewall_ranges` 두 시트만 관리하면, 신청서 폴더의 모든 xlsx를 통합하고 대상방화벽을 계산해 SECUI CLI 초안까지 만들어 주는 매크로 포함 Excel 워크북입니다. Linux 빌드 파이프라인이 `.xlsm`을 생성하므로 Windows/Excel/COM 없이도 빌드/테스트가 가능합니다.
+신청자가 작성한 방화벽 정책 요청 엑셀을 받아, 출발지/목적지/포트/방향/용도를
+파싱하고, 등록된 방화벽 대역과 비교하여 `대상방화벽` 컬럼과 SECUI CLI 명령을
+생성하는 도구입니다. 작업은 Excel-native VBA 워크북에서 수행하며, 동일한 로직을
+리눅스에서 검증·실행하기 위한 Python CLI/GUI와 빌드 스크립트를 함께 제공합니다.
 
-## Summary
+## English Summary
 
-A macro-enabled Excel workbook that merges firewall-policy request spreadsheets and computes target firewalls from operator-defined range rows, with no PowerQuery. A Linux pipeline produces the shipped `.xlsm`, and a Python CLI/GUI mirrors the same logic for operators who prefer working outside Excel.
+Linux-buildable Excel-native tool that ingests firewall-policy request workbooks,
+parses source/destination/port/direction/usage fields, resolves them against a
+firewall-range registry, and writes `대상방화벽` plus SECUI CLI commands. VBA
+inside the shipped `.xlsm` is mirrored in Python so the same workflow runs from
+the Linux CLI or PySide6 GUI.
 
-## Status
+## 빠른 상태 (Status)
 
-| 항목 | 상태 | 비고 |
-| --- | --- | --- |
-| 제품 성숙도 | 운영 가능 | 매크로 활성 Excel 워크북 |
-| 빌드 환경 | Linux 전용 | Windows/Excel/COM/PowerShell 불필요 |
-| 데이터 입력 시트 | 2개 핵심 + 4개 보조 | `firewalls`, `firewall_ranges`가 유일한 경로 계산 기준 |
-| 결과 시트 | 4개 | `requests`, `processing_log`, `route_results`, `secui_cli` |
-| 외부 인터페이스 | CLI + GUI | `secui_cli.py`, `secui_gui.py` (PySide6) |
-| 테스트 | pytest 오라클 + 구조 테스트 | VBA 동작과 Python 오라클이 동일해야 통과 |
-| 의존성 | 핀 버전 | `pyOpenVBA 2.0.0`, `openpyxl 3.1.5`, `pytest 9.0.3`, `PySide6 6.11.1` |
+| 항목 | 값 |
+| --- | --- |
+| 릴리스 상태 | 운영 배포 (Production) |
+| 빌드 호스트 | Linux (Excel/Windows/COM 불필요) |
+| 매크로 출력 | `.xlsm` (VBA 내장) |
+| Python 동등성 | VBA ↔ Python 결과 동일성 검증 |
+| 테스트 도구 | `pytest` 9.0.3, oracle 비교 |
+| GUI 스택 | PySide6 6.11.1 |
+| 핀 버전 | `pyOpenVBA==2.0.0`, `openpyxl==3.1.5` |
 
-## 빠른 흐름
+## 한눈에 보는 흐름 (Flow)
 
-1. **빌드**: `./.venv/bin/python scripts/build_xlsm.py` 실행 → `dist/firewall-policy-automation.xlsm` 생성
-2. **데이터 입력**: `firewalls`, `firewall_ranges`, `settings` 시트를 운영자가 채움
-3. **자동 실행**: 워크북 열기 시 `Workbook_Open`이 신청서 통합 → 경로탐색 → SECUI CLI 생성을 순차 실행
-4. **CLI/GUI**: 워크북 외부에서는 `scripts/secui_cli.py` 또는 `scripts/secui_gui.py`로 동일 로직 사용
+1. 신청자가 `request-folder/` 아래 팀별 폴더에 `신청서_*.xlsx`를 둔다.
+2. VBA 워크북의 `requests` 시트(헤더 행 2, 데이터 행 3–)에 14개 표준 컬럼을 채운다.
+3. `대상방화벽`은 `firewall_ranges` 시트와 비교하여 자동으로 결정한다.
+4. SECUI CLI 출력은 `vendor_cli_templates`/`service_catalog`로 생성하고
+   `route_results` 시트에 진단 정보까지 기록한다.
+5. 리눅스에서는 동일 로직을 `secui_cli.py`/`secui_gui.py`로 실행한다.
 
-## 목차
+## 목차 (Table of Contents)
 
-- [목적 및 구성](#목적-및-구성)
-- [먼저 읽을 파일](#먼저-읽을-파일)
-- [진입점](#진입점)
-- [빠른 시작](#빠른-시작)
-- [워크북 시트 한눈에 보기](#워크북-시트-한눈에-보기)
-- [입력 시트 명세](#입력-시트-명세)
-- [아키텍처](#아키텍처)
-- [명령어 레퍼런스](#명령어-레퍼런스)
-- [로컬 개발](#로컬-개발)
-- [테스트](#테스트)
-- [기여](#기여)
-- [메인테이너](#메인테이너)
-- [라이선스](#라이선스)
-- [추가 문서](#추가-문서)
+- [패키지 구성 / Package Contents](#package-contents)
+- [상태 / Status](#status)
+- [먼저 읽을 파일 / First Files to Read](#first-files-to-read)
+- [진입점 / API and Entry Points](#api-and-entry-points)
+- [빠른 시작 / Quickstart](#quickstart)
+- [명령어 / Commands Reference](#commands-reference)
+- [워크북 계약 / Workbook Contract](#workbook-contract)
+- [로컬 개발 / Local Development](#local-development)
+- [테스트 / Testing](#testing)
+- [기여 / Contributing](#contributing)
+- [유지보수 / Maintainers](#maintainers)
+- [추가 문서 / Further Documentation](#further-documentation)
+- [라이선스 / License](#license)
 
-## 목적 및 구성
-
-방화벽 정책 신청은 보통 (1) 여러 부서에서 다양한 양식의 xlsx가 들어오고, (2) 출발지/목적지 대역이 어떤 방화벽을 거쳐야 하는지 계산이 필요하고, (3) 결과를 SECUI CLI로 변환해야 하는 단계로 구성됩니다. 이 도구는 그 세 단계를 Excel 워크북 한 파일 안에서 처리합니다.
-
-핵심 설계:
-
-- **Excel 네이티브**: PowerQuery, 외부 데이터 원본, COM 호출 없이 VBA만으로 동작하므로 DRM/외부연결 차단 환경에서도 동작합니다.
-- **데이터 입력 최소화**: 운영자가 직접 편집할 시트는 `firewalls`와 `firewall_ranges` 두 개입니다. 기존 zone/routing_paths/BFS 모델은 제거되었고, 대상방화벽 계산의 유일한 기준은 `firewall_ranges`입니다.
-- **이중 구현 + 오라클 테스트**: `vba/`의 VBA 로직과 `firewall_policy/`의 Python 미러가 동일 동작을 내도록 `tests/`의 오라클 테스트로 묶여 있습니다.
-- **외부 인터페이스**: 워크북 밖에서도 동일한 로직을 쓸 수 있도록 `secui_cli.py`(CLI)와 `secui_gui.py`(PySide6 GUI)를 제공합니다.
-
-### 패키지 구성
+## 패키지 구성 / Package Contents
 
 | 경로 | 역할 |
 | --- | --- |
-| `vba/` | `.xlsm`에 주입되는 VBA 모듈 (`FirewallPolicyAutomation.bas`, `FirewallRouteAnalysis.bas`) |
-| `firewall_policy/` | VBA 동작의 Python 미러. SECUI CLI/GUI의 백엔드 |
-| `scripts/` | Linux 빌더, SECUI CLI/GUI, 릴리스 번들러 |
-| `tests/` | pytest 오라클/스펙 테스트, 워크북 구조 테스트 |
-| `docs/` | 운영자용 스키마 및 Excel 네이티브 런북 |
-| `request-folder/` | 샘플 신청서 트리 (`_빈양식/`은 빈 양식) |
+| `vba/` | `.xlsm`에 주입되는 매크로 모듈 (요청 병합, 라우트 계산) |
+| `firewall_policy/` | VBA 로직의 순수 Python 미러 (`cidr.py`, `folder_parse.py`, `request_parser.py`, `gui_export.py`) |
+| `scripts/` | 빌더, SECUI CLI/GUI, 요청 폴더 생성기 |
+| `tests/` | Python 오라클, 워크북 구조 회귀 테스트 |
+| `docs/` | 운영자 스키마, Excel-native 런북, 벤치마크 |
+| `request-folder/` | 샘플 신청 트리 (`정보보호센터_1234/`, `인프라팀_5678/` 등) |
+| `requirements.txt` | 빌드/테스트 핀 (pyOpenVBA, openpyxl, pytest) |
+| `requirements-gui.txt` | PySide6 GUI 핀 |
 
-## 먼저 읽을 파일
+## 상태 / Status
 
-| 작업 | 위치 | 메모 |
-| --- | --- | --- |
-| 경로/대역 계산 로직 변경 | `tests/route_oracle.py`, `vba/FirewallRouteAnalysis.bas`, `tests/test_route_oracle.py` | Python 오라클과 VBA가 동일 동작 유지 |
-| 워크북 시트/헤더/시드 변경 | `scripts/workbook_contract.py`, `scripts/build_xlsm.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py` | 빌드 시드와 구조 테스트 동기화 필요 |
-| 워크북 UX/네비게이션 변경 | `scripts/workbook_ux.py`, `tests/test_xlsm_structure.py`, `tests/test_workbook_usage_links.py` | 표시/입력 보조 전용. 경로/파서 값은 변경 금지 |
-| 신청서 파서 동작 변경 | `tests/request_parser_oracle.py`, `vba/FirewallPolicyAutomation.bas`, `tests/test_request_parsing.py` | 헤더 별칭과 병합 셀 동작 미러링 |
-| 워크북 외부 SECUI CLI 생성 | `scripts/secui_cli.py`, `scripts/secui_cli_runtime.py`, `scripts/secui_cli_seed.py`, `firewall_policy/request_parser.py` | 워크북과 동일한 변환 로직, 그룹 규칙 생성 |
-| SECUI GUI / 스탠드얼론 빌드 | `scripts/secui_gui.py`, `firewall_policy/gui_export.py`, `scripts/build_standalone_gui.py` | PySide6, 스탠드얼론 번들은 릴리스 산출물 |
-| SECUI 출력 변경 | `vba/FirewallPolicyAutomation.bas`, `tests/test_xlsm_structure.py`, `docs/` | 배치/CLI는 `대상방화벽`을 `;`로 분리 |
-| 빌드/릴리스 산출물 변경 | `scripts/build_xlsm.py`, `scripts/make_request_folder.py`, `tests/test_xlsm_structure.py` | CI/릴리스는 산출물 기반 |
+- **운영 준비 (Production-ready)**: 운영 부서에서 사용 중이며, `v*` 태그로
+  빌드/검증/릴리스가 자동화되어 있습니다.
+- **교차 플랫폼 로직**: VBA와 Python 구현이 동일 동작을 보장하도록 오라클 테스트로
+  고정되어 있습니다.
+- **지원 종료/비추천 항목**: 없음. 기존 `network_definitions`/`routing_paths` 폴백은
+  코드상 유지되지만 신규 워크플로에서는 사용하지 않습니다.
 
-## 진입점
+## 먼저 읽을 파일 / First Files to Read
 
-| 진입점 | 호출자 | 동작 |
-| --- | --- | --- |
-| `Workbook_Open` 이벤트 | Excel | 워크북 열림 시 자동 실행: 신청서 통합 → 경로탐색 → SECUI CLI 생성 |
-| `RunAll` 매크로 (`F9`) | 운영자 | 위 파이프라인 전체를 수동으로 한 번 실행 |
-| `SelectRequestFolder` 매크로 | 운영자 | `settings.request_folder`를 폴더 선택 대화상자로 갱신 |
-| `scripts/secui_cli.py` | CLI 사용자 | 워크북 외부에서 SECUI CLI 텍스트/배치 생성 |
-| `scripts/secui_gui.py` | GUI 사용자 | PySide6 기반 단일 창 도구 |
-
-## 빠른 시작
-
-1. `dist/firewall-policy-automation.xlsm`을 열고 매크로를 허용합니다.
-2. `firewalls` 시트에 장비명, 벤더, 사용여부를 등록합니다.
-3. `firewall_ranges` 시트에 출발지/목적지 CIDR, 방향, 표시 순서를 등록합니다.
-4. `settings` 시트의 `request_folder` 값에 신청서 폴더 경로를 입력하거나 `SelectRequestFolder` 매크로로 선택합니다.
-5. 워크북을 다시 열면 `Workbook_Open`이 신청서 통합, 경로탐색, SECUI CLI 생성을 순서대로 자동 실행합니다.
-6. `requests`에서 최종 신청 목록을, `route_results`에서 대상방화벽과 경로탐색 결과를 확인합니다.
-7. 수동 실행이 필요하면 `F9`를 누릅니다. 신청서 파싱, 경로분석, SECUI CLI 생성을 한 번에 실행합니다.
-
-## 워크북 시트 한눈에 보기
-
-### 입력 시트
-
-| 시트 | 역할 |
+| 목적 | 권장 파일 |
 | --- | --- |
-| `firewalls` | 방화벽 장비 메타데이터 |
-| `firewall_ranges` | 방화벽별 출발지/목적지 통과 대역 정의 |
-| `settings` | 신청서 폴더, 파싱 대상 시트, 헤더 별칭 참조 |
-| `header_aliases` | 표준이 아닌 신청서 헤더 매핑 |
-| `vendor_cli_templates` | 벤더별 CLI 명령 템플릿 |
-| `service_catalog` | SECUI 서비스 표기 예시 (`tcp/443`, `udp/53` 등) |
+| 제품 동작 이해 | `vba/FirewallRouteAnalysis.bas`, `vba/FirewallPolicyAutomation.bas` |
+| 시트 스키마 확인 | `docs/excel-schema.md`, `docs/excel-native.md` |
+| CLI 사용법 | `scripts/secui_cli.py`, `scripts/secui_cli_runtime.py` |
+| GUI 사용법 | `scripts/secui_gui.py`, `firewall_policy/gui_export.py` |
+| 빌드 산출물 | `scripts/build_xlsm.py`, `scripts/build_release_bundle.py` |
+| 동작 변경 영향도 | `AGENTS.md`의 *Where To Look* 표 |
 
-### 결과 시트
+## 진입점 / API and Entry Points
 
-| 시트 | 역할 |
-| --- | --- |
-| `requests` | 14열 사용자용 통합 신청 목록 |
-| `processing_log` | 통합 처리 로그 |
-| `route_results` | 경로탐색/대상방화벽/검증 결과 |
-| `secui_cli` | SECUI CLI 명령 초안 |
-
-### 참고 시트
-
-| 시트 | 역할 |
-| --- | --- |
-| `sample-request-format` | 신청서 양식 예시 |
-| `usage` | 워크북 내 사용 순서 안내 |
-
-내부 추적 시트:
-
-| 시트 | 가시성 | 역할 |
+| 진입점 | 형태 | 주요 인자 |
 | --- | --- | --- |
-| `_request_tracking` | 숨김 | `원본파일`, `원본행`, `요청폴더`, `제목`을 `request_row` 키로 보관 |
+| `.xlsm` 워크북 | 매크로 실행 | 신청 폴더 경로, 출력 폴더 |
+| `scripts/secui_cli.py` | Linux CLI | `--workbook`, `--format text` 등 |
+| `scripts/secui_gui.py` | PySide6 GUI | 워크북 로드 후 대화형 실행 |
+| `firewall_policy.request_parser` | Python 모듈 | 신청 행 → SECUI 룰 묶음 |
+| `firewall_policy.folder_parse` | Python 모듈 | 신청 폴더 스캔/병합 |
+| `firewall_policy.cidr` | Python 모듈 | CIDR 매칭/병합 |
 
-## 입력 시트 명세
+## 빠른 시작 / Quickstart
 
-### `requests` 시트 (14열 사용자 시트)
+### 1. 의존성 설치
 
-헤더는 2행, 데이터는 3행부터 시작합니다.
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+# GUI 빌드까지 검증하려면:
+./.venv/bin/pip install -r requirements-gui.txt
+```
 
-| # | 컬럼 | 설명 |
-| --- | --- | --- |
-| 1 | 요청부서 | 신청 부서명 |
-| 2 | 요청번호 | 부서 내부 식별 번호 |
-| 3 | 대상방화벽 | 계산 결과. 내부 필드명은 `target_firewalls`, 값은 `;`로 결합 |
-| 4 | 출발지 | 출발지 IP/CIDR/목록 |
-| 5 | 출발지설명 | 출발지 설명 |
-| 6 | 목적지 | 목적지 IP/CIDR/목록 |
-| 7 | 목적지설명 | 목적지 설명 |
-| 8 | 프로토콜 | TCP/UDP/ICMP 등 |
-| 9 | 포트 | 포트 번호 또는 범위 |
-| 10 | 방향 | OUT/IN/BOTH |
-| 11 | 용도 | 사용 목적 |
-| 12 | 시작일 | 정책 시작일 |
-| 13 | 종료일 | 정책 종료일 |
-| 14 | 비고 | 비고 |
+### 2. 워크북 빌드
 
-검증/추적 정보는 `requests`에 두지 않고 다음 위치에 보관됩니다.
+```bash
+./.venv/bin/python scripts/build_xlsm.py
+# 결과: dist/firewall-policy-automation.xlsm
+```
 
-| 정보 | 위치 |
+### 3. SECUI CLI 실행 (Excel 없이)
+
+```bash
+./.venv/bin/python scripts/secui_cli.py \
+    --workbook dist/firewall-policy-automation.xlsm \
+    --format text
+```
+
+### 4. SECUI GUI 실행
+
+```bash
+./.venv/bin/python scripts/secui_gui.py
+```
+
+### 5. 신청 폴더 시드 생성
+
+```bash
+./.venv/bin/python scripts/make_request_folder.py
+```
+
+## 명령어 / Commands Reference
+
+| 명령 | 용도 |
 | --- | --- |
-| `원본파일`, `원본행`, `요청폴더`, `제목` | 숨김 시트 `_request_tracking` (`request_row` 키) |
-| `검증상태`, `검증메시지`, `방화벽경로`, `출발매칭대역`, `목적매칭대역`, `대역경로`, `매칭근거`, `원본파일`, `원본행` | `route_results` 시트 |
+| `scripts/build_xlsm.py` | VBA를 주입한 매크로 워크북 빌드 |
+| `scripts/build_standalone_gui.py` | PySide6 GUI 번들 빌드 |
+| `scripts/build_release_bundle.py` | 릴리스 산출물 패키징 |
+| `scripts/make_request_folder.py` | 샘플 신청 트리 재생성 |
+| `scripts/secui_cli.py` | 워크북 → SECUI CLI 변환 |
+| `scripts/secui_cli_runtime.py` | CLI 런타임 헬퍼 |
+| `scripts/secui_cli_seed.py` | CLI용 시드 데이터 |
+| `scripts/secui_gui.py` | 대화형 GUI |
+| `scripts/route_seed.py` | 라우트 계산용 시드 |
+| `scripts/workbook_contract.py` | 시트/헤더 계약 정의 |
+| `scripts/workbook_ux.py` | 워크북 UX 보조 모듈 |
 
-### `firewalls` 시트
+## 워크북 계약 / Workbook Contract
 
-| 컬럼 | 설명 | 예시 |
+| 시트 | 종류 | 비고 |
 | --- | --- | --- |
-| `firewall_name` | 장비 식별자. `firewall_ranges.firewall_name`과 일치해야 함 | `SECUI-FW-01` |
-| `vendor` | 벤더. SECUI 출력은 `vendor == "
+| `requests` | 사용자 입력(14열) | 헤더 행 2, 데이터 행 3– |
+| `route_results` | 진단 결과 | 검증상태/메시지/경로/매칭근거 |
+| `_request_tracking` | 숨김 | 원본파일·원본행·요청폴더·제목 |
+| `firewalls` | 참조 | 방화벽 메타데이터 |
+| `firewall_ranges` | 참조 | 사용자 정의 방화벽 대역 |
+| `settings` | 참조 | 동작 파라미터 |
+| `header_aliases` | 참조 | 부서별 헤더 별칭 |
+| `vendor_cli_templates` | 참조 | 벤더 CLI 템플릿 |
+| `service_catalog` | 참조 | 서비스 카탈로그 |
+
+### `requests` 14개 컬럼
+
+`요청부서`, `요청번호`, `대상방화벽`, `출발지`, `출발지설명`, `목적지`,
+`목적지설명`, `프로토콜`, `포트`, `방향`, `용도`, `시작일`, `종료일`, `비고`.
+
+`대상방화벽`은 여러 값일 때 `;`로 결합하며, 내부 결과 필드명은
+`target_firewalls`입니다.
+
+## 로컬 개발 / Local Development
+
+- 커밋된 `./.venv/bin/python` 사용을 권장합니다.
+- 핀은 `requirements.txt`(`pyOpenVBA==2.0.0`, `openpyxl==3.1.5`,
+  `pytest==9.0.3`)와 `requirements-gui.txt`(`PySide6==6.11.1`)를 그대로
+  따릅니다.
+- 빌드는 Linux에서만 검증되며 Windows/Excel/PowerShell/COM 없이 동작합니다.
+- 라우트 계산 로직을 변경할 때 `tests/route_oracle.py`와
+  `vba/FirewallRouteAnalysis.bas`가 항상 동일 동작을 유지하도록 동기화합니다.
+- 워크북 UX/내비게이션 변경은 `scripts/workbook_ux.py`에서만 수행하고, 라우트나
+  파서 결과 값은 건드리지 않습니다.
+
+## 테스트 / Testing
+
+```bash
+# 전체 회귀
+./.venv/bin/python -m pytest tests/ -q
+
+# 라우트 계산 단일 검증 (Python 오라클 ↔ VBA 동작 확인)
+./.venv/bin/python -m pytest tests/test_route_oracle.py -v
+
+# 워크북 구조/UX 회귀
+./.venv/bin/python -m pytest tests/test_xlsm_structure.py \
+    tests/test_workbook_usage_links.py -v
+```
+
+테스트는 오라클 비교(`route_oracle.py`, `request_parser_oracle.py`,
+`folder_parse_oracle.py`, `user_alias_oracle.py`)와 워크북 구조 검사,
+SECUI CLI/GUI 가드 검사, 빌드 결과물 검사로 구성됩니다.
+
+## 기여 / Contributing
+
+- 워크플로는 `CONTRIBUTING.md`를 따릅니다.
+- `AGENTS.md`의 *Where To Look* 표를 기준으로 변경 영향 범위를 먼저 파악합니다.
+- VBA와 Python을 동시에 손대야 하는 변경은 두 측이 같은 동작임을 테스트로
+  입증한 뒤에 머지합니다.
+
+## 유지보수 / Maintainers
+
+- 운영팀 내방화벽 자동화 담당 (저장소 OWNERS 기준)
+- 회신이 늦은 경우 저장소 `CODEOWNERS` 또는 조직 위키의 *Points of Contact*를
+  참고하세요.
+
+## 추가 문서 / Further Documentation
+
+- [`docs/excel-schema.md`](docs/excel-schema.md) — 시트/헤더 스키마
+- [`docs/excel-native.md`](docs/excel-native.md) — Excel-native 런북
+- [`docs/firewall-excel-benchmark.md`](docs/firewall-excel-benchmark.md) — 벤치마크
+- [`docs/research-notes.md`](docs/research-notes.md) — 설계 메모
+- [`request-folder/README.txt`](request-folder/README.txt) — 신청 폴더 규칙
+- [`AGENTS.md`](AGENTS.md) — 저장소 지식 베이스(개발자용)
+
+## 라이선스 / License
+
+저장소 내 [`LICENSE`](LICENSE) 파일의 조항을 따릅니다.
